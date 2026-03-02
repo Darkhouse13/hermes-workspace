@@ -267,7 +267,7 @@ export function MemoryBrowserScreen() {
             </span>
           </button>
 
-          <div className={cn('min-h-0 flex-1 px-2 pb-2', !mobileFilesOpen && 'hidden md:block')}>
+          <div className={cn('min-h-0 flex-1 px-2 pb-2', !mobileFilesOpen && 'hidden md:block', searchEnabled && 'hidden')}>
             <div className="max-h-72 space-y-1 overflow-y-auto pr-1 md:max-h-none md:h-full">
               {rootMemory ? (
                 <FileRow
@@ -305,7 +305,7 @@ export function MemoryBrowserScreen() {
                 <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-primary-400 dark:text-neutral-500">
                   Search Results
                 </div>
-                <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+                <div className="max-h-[calc(100vh-12rem)] space-y-1 overflow-y-auto pr-1">
                   {searchQuery.isLoading ? (
                     <div className="rounded-lg border border-primary-200 bg-primary-50/80 px-3 py-2 text-xs text-primary-400 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-500">
                       Searching...
