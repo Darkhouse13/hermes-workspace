@@ -79,7 +79,10 @@ export const usePaperclipStore = create<PaperclipStore>((set, get) => ({
   createHandoff: (payload) => withLoad(set, async () => {
     await api.createHandoff(payload)
     await get().fetchHandoffs(String(payload.projectId || ''))
+    await get().fetchApprovals(String(payload.projectId || ''))
+    await get().fetchMissions(String(payload.projectId || ''))
     await get().fetchProjectDetail(String(payload.projectId || ''))
+    await get().fetchRecommendation(String(payload.projectId || ''))
   }),
   launchRole: (payload) => withLoad(set, async () => {
     await api.launchRole(payload)

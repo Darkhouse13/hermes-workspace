@@ -31,6 +31,9 @@ export async function createApproval(input: {
   type: ApprovalType
   requiredByRole: PaperclipApproval['requiredByRole']
   rationale: string
+  requestedDecision?: string
+  decisionOptions?: Array<string>
+  recommendedOption?: string
   blockingIssues?: Array<string>
 }): Promise<PaperclipApproval> {
   const project = await getProject(input.projectId)
@@ -43,6 +46,9 @@ export async function createApproval(input: {
     requiredByRole: input.requiredByRole,
     status: 'pending',
     rationale: input.rationale,
+    requestedDecision: input.requestedDecision,
+    decisionOptions: input.decisionOptions,
+    recommendedOption: input.recommendedOption,
     blockingIssues: input.blockingIssues || [],
     decisionLog: [],
     createdAt: nowIso(),
@@ -78,6 +84,7 @@ export async function updateApprovalStatus(
     approvedAt: status === 'approved' ? timestamp : approval.approvedAt,
     rejectedAt: status === 'rejected' ? timestamp : approval.rejectedAt,
     decisionLog: note ? [...approval.decisionLog, `${timestamp}: ${note}`] : approval.decisionLog,
+    resolutionSummary: note || approval.resolutionSummary,
   }
   await writeApprovals(
     project.slug,
@@ -122,4 +129,34 @@ export async function ensureApprovalForMission(
   if (!['cto', 'engineering'].includes(mission.role)) return null
   if (status && !['awaiting_approval', 'completed'].includes(status)) return null
   return createClaudeFinalApprovalForMission(missionId)
+}
+
+export async function ensureFounderApprovalForMission(input: {
+  projectId: string
+  missionId: string
+  rationale: string
+  requestedDecision?: string
+  decisionOptions?: Array<string>
+  recommendedOption?: string
+}): Promise<PaperclipApproval | null> {
+  const project = await getProject(input.projectId)
+  if (!project) return null
+  const approvals = await readApprovals(project.slug)
+  const existing = approvals.find(
+    (approval) =>
+      approval.missionId === input.missionId &&
+      approval.requiredByRole === 'founder' &&
+      approval.status === 'pending',
+  )
+  if (existing) return existing
+  return createApproval({
+    projectId: input.projectId,
+    missionId: input.missionId,
+    type: 'founder_strategy',
+    requiredByRole: 'founder',
+    rationale: input.rationale,
+    requestedDecision: input.requestedDecision,
+    decisionOptions: input.decisionOptions,
+    recommendedOption: input.recommendedOption,
+  })
 }

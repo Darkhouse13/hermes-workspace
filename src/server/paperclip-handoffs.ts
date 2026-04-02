@@ -1,9 +1,10 @@
 import type { PaperclipHandoff, PaperclipRole } from '@/types/paperclip'
 import { getPaperclipProjectHandoffsPath, getPaperclipProjectMarkdownPath } from '@/server/paperclip-paths'
 import { appendMarkdownSection, makePaperclipId, nowIso, readJsonOrDefault, writeJsonPretty } from '@/server/paperclip-store'
+import { ensureFounderApprovalForMission } from '@/server/paperclip-approvals'
 import { appendProjectEvent } from '@/server/paperclip-continuity'
 import { getProject } from '@/server/paperclip-projects'
-import { getMission } from '@/server/paperclip-missions'
+import { createMission, getMission, listProjectMissions } from '@/server/paperclip-missions'
 
 async function readHandoffs(projectSlug: string): Promise<Array<PaperclipHandoff>> {
   return readJsonOrDefault<Array<PaperclipHandoff>>(getPaperclipProjectHandoffsPath(projectSlug), [])
@@ -76,7 +77,53 @@ export async function createHandoff(input: {
     type: 'handoff_created',
     summary: `Handoff created: ${handoff.fromRole} -> ${handoff.toRole}`,
   })
+  await maybeAutoCreateSuccessorMission(handoff)
   return handoff
+}
+
+async function maybeAutoCreateSuccessorMission(handoff: PaperclipHandoff): Promise<void> {
+  const project = await getProject(handoff.projectId)
+  if (!project) return
+  const sourceMission = await getMission(handoff.missionId)
+  if (!sourceMission) return
+
+  if (handoff.toRole === 'founder') {
+    await ensureFounderApprovalForMission({
+      projectId: project.id,
+      missionId: handoff.missionId,
+      rationale: handoff.summary,
+      requestedDecision: `Decide how to proceed after ${sourceMission.title}`,
+      decisionOptions:
+        handoff.nextSteps.length > 0
+          ? handoff.nextSteps
+          : ['Approve the recommendation', 'Request a revision', 'Hold for more evidence'],
+      recommendedOption: handoff.nextSteps[0] || 'Approve the recommendation',
+    })
+    return
+  }
+
+  const existing = (await listProjectMissions(project.id)).find(
+    (mission) =>
+      mission.parentMissionId === handoff.missionId &&
+      mission.role === handoff.toRole &&
+      mission.status !== 'cancelled',
+  )
+  if (existing) return
+
+  await createMission({
+    projectId: project.id,
+    title: `${handoff.toRole.toUpperCase()}: Follow up on ${sourceMission.title}`,
+    role: handoff.toRole,
+    goal: handoff.summary,
+    instructions:
+      handoff.nextSteps.join(' ') ||
+      `Review the handoff from ${handoff.fromRole} and continue the project with the next best step.`,
+    inputs: [handoff.summary, ...handoff.decisions],
+    dependencyIds: [handoff.missionId],
+    parentMissionId: handoff.missionId,
+    priority: sourceMission.priority,
+    riskTier: sourceMission.riskTier,
+  })
 }
 
 export async function ensureHandoffForMissionTransition(

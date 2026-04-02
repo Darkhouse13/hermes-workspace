@@ -11,6 +11,7 @@ import { CreateHandoffDialog } from './components/create-handoff-dialog'
 import { CreateMissionDialog } from './components/create-mission-dialog'
 import { EditProjectDialog } from './components/edit-project-dialog'
 import { LaunchRoleDialog } from './components/launch-role-dialog'
+import { ProjectDependencyGraph } from './components/project-dependency-graph'
 import { ProjectMissionPipeline } from './components/project-mission-pipeline'
 
 export function ProjectDetailScreen({ projectId }: { projectId: string }) {
@@ -58,6 +59,9 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           <PaperclipSection title="Mission pipeline" eyebrow="Execution">
             <ProjectMissionPipeline missions={detail.missions} />
           </PaperclipSection>
+          <PaperclipSection title="Dependency graph" eyebrow="Flow">
+            <ProjectDependencyGraph missions={detail.missions} />
+          </PaperclipSection>
           <PaperclipSection title="Handoffs" eyebrow="Continuity">
             <div className="grid gap-3">
               {detail.handoffs.map((handoff) => <PaperclipCard key={handoff.id}><div className="brutalist-label">{handoff.fromRole} → {handoff.toRole}</div><p className="mt-2 text-sm text-[var(--theme-text)]">{handoff.summary}</p></PaperclipCard>)}
@@ -66,7 +70,7 @@ export function ProjectDetailScreen({ projectId }: { projectId: string }) {
           </PaperclipSection>
           <PaperclipSection title="Approvals" eyebrow="Governance">
             <div className="grid gap-3">
-              {detail.approvals.map((approval) => <PaperclipCard key={approval.id}><div className="flex items-center justify-between gap-2"><div className="brutalist-label">{approval.type}</div><PaperclipBadge label={approval.status} tone={approval.status === 'approved' ? 'success' : approval.status === 'rejected' ? 'danger' : 'warning'} /></div><p className="mt-2 text-sm text-[var(--theme-muted)]">{approval.rationale}</p></PaperclipCard>)}
+              {detail.approvals.map((approval) => <PaperclipCard key={approval.id}><div className="flex items-center justify-between gap-2"><div className="brutalist-label">{approval.type}</div><PaperclipBadge label={approval.status} tone={approval.status === 'approved' ? 'success' : approval.status === 'rejected' ? 'danger' : 'warning'} /></div><p className="mt-2 text-sm text-[var(--theme-muted)]">{approval.rationale}</p>{approval.requestedDecision ? <p className="mt-2 text-sm text-[var(--theme-text)]"><strong>Decision needed:</strong> {approval.requestedDecision}</p> : null}{approval.recommendedOption ? <p className="mt-2 text-sm text-[var(--theme-text)]"><strong>Recommended:</strong> {approval.recommendedOption}</p> : null}{approval.decisionOptions?.length ? <div className="mt-2 flex flex-wrap gap-2">{approval.decisionOptions.map((option) => <span key={option} className="brutalist-badge">{option}</span>)}</div> : null}{approval.resolutionSummary ? <p className="mt-2 text-xs text-[var(--theme-muted)]">{approval.resolutionSummary}</p> : null}</PaperclipCard>)}
               {detail.approvals.length === 0 ? <PaperclipCard>No approvals yet.</PaperclipCard> : null}
             </div>
           </PaperclipSection>

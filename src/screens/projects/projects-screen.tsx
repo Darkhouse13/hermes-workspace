@@ -6,14 +6,15 @@ import { PaperclipCard } from '@/components/paperclip/paperclip-card'
 import { PaperclipPage } from '@/components/paperclip/paperclip-page'
 import { PaperclipSection } from '@/components/paperclip/paperclip-section'
 import { usePaperclipStore } from '@/stores/paperclip-store'
+import { PortfolioPriorityQueue } from './components/portfolio-priority-queue'
 import { CreateProjectDialog } from './components/create-project-dialog'
 
 export function ProjectsScreen() {
-  const { projects, fetchProjects, createProject, loading, error } = usePaperclipStore()
-  useEffect(() => { void fetchProjects() }, [fetchProjects])
+  const { projects, missions, fetchProjects, fetchMissions, createProject, loading, error } = usePaperclipStore()
+  useEffect(() => { void fetchProjects(); void fetchMissions() }, [fetchProjects, fetchMissions])
   return (
     <PaperclipPage title="Projects" subtitle="Projects are the source of continuity for every app, idea, or venture inside Paperclip.">
-      <div className="grid gap-4 lg:grid-cols-[1.2fr_2fr]">
+      <div className="grid gap-4 lg:grid-cols-[1.1fr_1.4fr_1.5fr]">
         <CreateProjectDialog onSubmit={createProject} />
         <PaperclipSection title="Active portfolio" eyebrow="Visibility">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
@@ -39,6 +40,9 @@ export function ProjectsScreen() {
             {!loading && projects.length === 0 ? <PaperclipCard>No projects yet.</PaperclipCard> : null}
           </div>
           {error ? <p className="text-sm text-red-500">{error}</p> : null}
+        </PaperclipSection>
+        <PaperclipSection title="Portfolio priority queue" eyebrow="Orchestration">
+          <PortfolioPriorityQueue projects={projects} missions={missions} />
         </PaperclipSection>
       </div>
     </PaperclipPage>

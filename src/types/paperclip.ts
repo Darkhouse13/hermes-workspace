@@ -178,8 +178,12 @@ export type PaperclipApproval = {
   requiredByRole: PaperclipRole | 'founder'
   status: ApprovalStatus
   rationale: string
+  requestedDecision?: string
+  decisionOptions?: Array<string>
+  recommendedOption?: string
   blockingIssues: Array<string>
   decisionLog: Array<string>
+  resolutionSummary?: string
   createdAt: string
   updatedAt: string
   approvedAt?: string

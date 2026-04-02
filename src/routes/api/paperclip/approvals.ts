@@ -28,6 +28,9 @@ export const Route = createFileRoute('/api/paperclip/approvals')({
           type: String(body.type || 'founder_strategy') as any,
           requiredByRole: String(body.requiredByRole || 'founder') as any,
           rationale: String(body.rationale || ''),
+          requestedDecision: typeof body.requestedDecision === 'string' ? body.requestedDecision : undefined,
+          decisionOptions: Array.isArray(body.decisionOptions) ? body.decisionOptions.map(String) : undefined,
+          recommendedOption: typeof body.recommendedOption === 'string' ? body.recommendedOption : undefined,
           blockingIssues: Array.isArray(body.blockingIssues) ? body.blockingIssues.map(String) : [],
         }) })
       },
