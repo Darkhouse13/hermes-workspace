@@ -1,8 +1,8 @@
-
 import fs from 'node:fs/promises'
 import type { MissionStatus, PaperclipMission, PaperclipMissionFilters } from '@/types/paperclip'
 import { getPaperclipMissionsDir, getPaperclipMissionPath } from '@/server/paperclip-paths'
 import { makePaperclipId, nowIso, readJsonOrDefault, writeJsonPretty } from '@/server/paperclip-store'
+import { appendProjectEvent } from '@/server/paperclip-continuity'
 import { getProject, updateProject } from '@/server/paperclip-projects'
 
 const ALLOWED_TRANSITIONS: Record<MissionStatus, Array<MissionStatus>> = {
@@ -64,6 +64,7 @@ export async function createMission(input: {
   inputs?: Array<string>
   expectedOutputs?: Array<string>
   dependencyIds?: Array<string>
+  parentMissionId?: string
 }): Promise<PaperclipMission> {
   const project = await getProject(input.projectId)
   if (!project) throw new Error('Project not found')
@@ -82,6 +83,7 @@ export async function createMission(input: {
     expectedOutputs: input.expectedOutputs || [],
     linkedSessionIds: [],
     dependencyIds: input.dependencyIds || [],
+    parentMissionId: input.parentMissionId,
     createdAt: timestamp,
     updatedAt: timestamp,
   }
@@ -92,6 +94,13 @@ export async function createMission(input: {
       latestSummary: mission.goal,
     })
   }
+  await appendProjectEvent({
+    projectId: project.id,
+    missionId: mission.id,
+    type: 'mission_created',
+    summary: `Mission created: ${mission.title}`,
+    metadata: { role: mission.role, priority: mission.priority, dependencies: mission.dependencyIds },
+  })
   return mission
 }
 
@@ -120,14 +129,30 @@ export async function transitionMissionStatus(
   const patch: Partial<PaperclipMission> = { status, updatedAt: nowIso() }
   if (status === 'in_progress' && !mission.startedAt) patch.startedAt = nowIso()
   if (status === 'completed') patch.completedAt = nowIso()
-  return updateMission(missionId, patch)
+  const updated = await updateMission(missionId, patch)
+  await appendProjectEvent({
+    projectId: updated.projectId,
+    missionId: updated.id,
+    type: 'mission_status_changed',
+    summary: `Mission ${updated.title} moved to ${status.replaceAll('_', ' ')}`,
+    metadata: { from: mission.status, to: status },
+  })
+  return updated
 }
 
 export async function attachMissionSession(missionId: string, sessionId: string): Promise<PaperclipMission> {
   const mission = await getMission(missionId)
   if (!mission) throw new Error('Mission not found')
   if (mission.linkedSessionIds.includes(sessionId)) return mission
-  return updateMission(missionId, {
+  const updated = await updateMission(missionId, {
     linkedSessionIds: [...mission.linkedSessionIds, sessionId],
   })
+  await appendProjectEvent({
+    projectId: updated.projectId,
+    missionId: updated.id,
+    type: 'session_linked',
+    summary: `Session linked to mission ${updated.title}`,
+    metadata: { sessionId },
+  })
+  return updated
 }

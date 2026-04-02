@@ -1,7 +1,7 @@
-
 import type { ApprovalStatus, ApprovalType, PaperclipApproval } from '@/types/paperclip'
 import { getPaperclipProjectApprovalsPath } from '@/server/paperclip-paths'
 import { makePaperclipId, nowIso, readJsonOrDefault, writeJsonPretty } from '@/server/paperclip-store'
+import { appendProjectEvent } from '@/server/paperclip-continuity'
 import { getProject } from '@/server/paperclip-projects'
 import { getMission } from '@/server/paperclip-missions'
 
@@ -50,6 +50,12 @@ export async function createApproval(input: {
   }
   const current = await readApprovals(project.slug)
   await writeApprovals(project.slug, [...current, approval])
+  await appendProjectEvent({
+    projectId: project.id,
+    missionId: approval.missionId,
+    type: 'approval_created',
+    summary: `Approval created: ${approval.type}`,
+  })
   return approval
 }
 
@@ -64,18 +70,25 @@ export async function updateApprovalStatus(
   const project = await getProject(approval.projectId)
   if (!project) throw new Error('Project not found')
   const projectApprovals = await readApprovals(project.slug)
+  const timestamp = nowIso()
   const next: PaperclipApproval = {
     ...approval,
     status,
-    updatedAt: nowIso(),
-    approvedAt: status === 'approved' ? nowIso() : approval.approvedAt,
-    rejectedAt: status === 'rejected' ? nowIso() : approval.rejectedAt,
-    decisionLog: note ? [...approval.decisionLog, `${nowIso()}: ${note}`] : approval.decisionLog,
+    updatedAt: timestamp,
+    approvedAt: status === 'approved' ? timestamp : approval.approvedAt,
+    rejectedAt: status === 'rejected' ? timestamp : approval.rejectedAt,
+    decisionLog: note ? [...approval.decisionLog, `${timestamp}: ${note}`] : approval.decisionLog,
   }
   await writeApprovals(
     project.slug,
     projectApprovals.map((item) => (item.id === approvalId ? next : item)),
   )
+  await appendProjectEvent({
+    projectId: project.id,
+    missionId: next.missionId,
+    type: 'approval_updated',
+    summary: `Approval ${next.type} updated to ${status}`,
+  })
   return next
 }
 

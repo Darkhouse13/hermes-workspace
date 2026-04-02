@@ -1,11 +1,9 @@
-
 import type { LaunchRoleRequest, LaunchRoleResponse, PaperclipMission, PaperclipRole } from '@/types/paperclip'
 import { createSession } from '@/server/hermes-api'
 import { getRoleRoutingRule } from '@/server/paperclip-company'
-import { getPaperclipProjectSessionLinkPath } from '@/server/paperclip-paths'
+import { appendProjectEvent, writeProjectSessionLink } from '@/server/paperclip-continuity'
 import { attachMissionSession, createMission, getMission, transitionMissionStatus, updateMission } from '@/server/paperclip-missions'
 import { addProjectSessionLink, getProject, updateProject } from '@/server/paperclip-projects'
-import { writeJsonPretty } from '@/server/paperclip-store'
 
 export async function planRoleLaunch(role: PaperclipRole) {
   const routing = await getRoleRoutingRule(role)
@@ -51,7 +49,7 @@ export async function launchRoleForMission(
 
   await attachMissionSession(mission.id, session.id)
   await addProjectSessionLink(project.id, session.id)
-  await writeJsonPretty(getPaperclipProjectSessionLinkPath(project.slug, session.id), {
+  await writeProjectSessionLink({
     sessionId: session.id,
     missionId: mission.id,
     projectId: project.id,
@@ -61,6 +59,17 @@ export async function launchRoleForMission(
   await transitionMissionStatus(mission.id, 'in_progress')
   await updateProject(project.id, {
     latestSummary: `Launched ${mission.role} mission: ${mission.title}`,
+  })
+  await appendProjectEvent({
+    projectId: project.id,
+    missionId: mission.id,
+    type: 'session_linked',
+    summary: `Launched ${mission.role} role session for ${mission.title}`,
+    metadata: {
+      sessionId: session.id,
+      provider: plan.primaryProvider,
+      model: plan.primaryModel,
+    },
   })
   const refreshed = await getMission(mission.id)
   if (!refreshed) throw new Error('Mission refresh failed')

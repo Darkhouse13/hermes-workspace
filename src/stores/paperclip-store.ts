@@ -32,6 +32,7 @@ type PaperclipStore = {
   launchRole: (payload: any) => Promise<void>
   updateMission: (missionId: string, payload: Record<string, unknown>) => Promise<void>
   updateApproval: (payload: Record<string, unknown>) => Promise<void>
+  createSuccessorFromRecommendation: (projectId: string) => Promise<void>
 }
 
 async function withLoad<T>(set: any, fn: () => Promise<T>): Promise<T> {
@@ -97,5 +98,23 @@ export const usePaperclipStore = create<PaperclipStore>((set, get) => ({
     const approval = (await api.updateApproval(payload)).approval
     await get().fetchApprovals(approval.projectId)
     await get().fetchProjectDetail(approval.projectId)
+  }),
+  createSuccessorFromRecommendation: (projectId) => withLoad(set, async () => {
+    const recommendation = (await api.routeNext(projectId)).recommendation
+    if (recommendation.action !== 'create_successor_mission' || !recommendation.recommendedRole) {
+      throw new Error('No successor mission recommendation is available.')
+    }
+    await api.createMission({
+      projectId,
+      title: recommendation.suggestedTitle || 'Recommended successor mission',
+      role: recommendation.recommendedRole,
+      goal: recommendation.suggestedGoal || recommendation.rationale,
+      instructions: recommendation.suggestedInstructions || recommendation.rationale,
+      parentMissionId: recommendation.missionId,
+      dependencyIds: recommendation.missionId ? [recommendation.missionId] : [],
+    })
+    await get().fetchProjectDetail(projectId)
+    await get().fetchMissions(projectId)
+    await get().fetchRecommendation(projectId)
   }),
 }))

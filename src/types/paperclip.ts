@@ -1,3 +1,4 @@
+
 export type PaperclipRole =
   | 'ceo'
   | 'research'
@@ -44,6 +45,8 @@ export type RouteNextActionType =
   | 'request_approval'
   | 'resolve_blocker'
   | 'review_handoff'
+  | 'resume_stale_mission'
+  | 'create_successor_mission'
   | 'noop'
 
 export type RoleRoutingRule = {
@@ -183,6 +186,34 @@ export type PaperclipApproval = {
   rejectedAt?: string
 }
 
+export type PaperclipEventType =
+  | 'project_created'
+  | 'mission_created'
+  | 'mission_status_changed'
+  | 'session_linked'
+  | 'handoff_created'
+  | 'approval_created'
+  | 'approval_updated'
+  | 'route_recommended'
+
+export type PaperclipEvent = {
+  id: string
+  projectId: string
+  missionId?: string
+  type: PaperclipEventType
+  summary: string
+  metadata?: Record<string, unknown>
+  createdAt: string
+}
+
+export type PaperclipSessionLink = {
+  sessionId: string
+  missionId: string
+  projectId: string
+  role: PaperclipRole
+  createdAt: string
+}
+
 export type PaperclipProjectSummary = {
   project: PaperclipProject
   activeMissionCount: number
@@ -197,6 +228,8 @@ export type PaperclipProjectDetail = {
   handoffs: Array<PaperclipHandoff>
   approvals: Array<PaperclipApproval>
   artifacts: Array<PaperclipArtifact>
+  events: Array<PaperclipEvent>
+  sessionLinks: Array<PaperclipSessionLink>
 }
 
 export type PaperclipMissionFilters = {
@@ -245,6 +278,9 @@ export type RouteNextAction = {
   missionId?: string
   recommendedRole?: PaperclipRole
   rationale: string
+  suggestedTitle?: string
+  suggestedGoal?: string
+  suggestedInstructions?: string
 }
 
 export const PAPERCLIP_ROLES: Array<PaperclipRole> = [

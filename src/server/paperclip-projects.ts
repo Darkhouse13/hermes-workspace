@@ -1,5 +1,4 @@
-
-import type { PaperclipProject, PaperclipProjectSummary } from '@/types/paperclip'
+import type { PaperclipProject, PaperclipProjectDetail, PaperclipProjectSummary } from '@/types/paperclip'
 import {
   getPaperclipProjectApprovalsPath,
   getPaperclipProjectArtifactsPath,
@@ -19,6 +18,10 @@ import {
   writeJsonPretty,
   writeText,
 } from '@/server/paperclip-store'
+import { appendProjectEvent, listProjectEvents, listProjectSessionLinks } from '@/server/paperclip-continuity'
+import { listApprovals } from '@/server/paperclip-approvals'
+import { listHandoffs } from '@/server/paperclip-handoffs'
+import { listProjectMissions } from '@/server/paperclip-missions'
 
 async function readProjects(): Promise<Array<PaperclipProject>> {
   return readJsonOrDefault<Array<PaperclipProject>>(getPaperclipProjectsIndexPath(), [])
@@ -80,16 +83,7 @@ export async function createProject(input: {
   await ensureDir(`${projectDir}/artifacts`)
   await writeText(
     getPaperclipProjectMarkdownPath(slug, 'PROJECT.md'),
-    `# ${project.name}
-
-## Thesis
-
-${project.thesis || 'TBD'}
-
-## Objective
-
-${project.objective || 'TBD'}
-`,
+    `# ${project.name}\n\n## Thesis\n\n${project.thesis || 'TBD'}\n\n## Objective\n\n${project.objective || 'TBD'}\n`,
   )
   await writeText(getPaperclipProjectMarkdownPath(slug, 'DECISIONS.md'), '# Decisions\n')
   await writeText(getPaperclipProjectMarkdownPath(slug, 'NOTES.md'), '# Notes\n')
@@ -100,6 +94,11 @@ ${project.objective || 'TBD'}
   await writeJsonPretty(getPaperclipProjectArtifactsPath(slug), [])
 
   await writeProjects(upsertById(existing, project))
+  await appendProjectEvent({
+    projectId: project.id,
+    type: 'project_created',
+    summary: `Project created: ${project.name}`,
+  })
   return project
 }
 
@@ -124,9 +123,9 @@ export async function addProjectSessionLink(projectIdOrSlug: string, sessionId: 
   const project = await getProject(projectIdOrSlug)
   if (!project) throw new Error('Project not found')
   if (!project.linkedSessionIds.includes(sessionId)) {
-    project.linkedSessionIds = [...project.linkedSessionIds, sessionId]
-    project.updatedAt = nowIso()
-    await updateProject(project.id, project)
+    await updateProject(project.id, {
+      linkedSessionIds: [...project.linkedSessionIds, sessionId],
+    })
   }
 }
 
@@ -158,6 +157,27 @@ export async function summarizeProject(project: PaperclipProject): Promise<Paper
     blockedMissionCount,
     pendingApprovalCount: approvals.filter((approval) => approval.status === 'pending').length,
     latestHandoffSnippet: handoffs[handoffs.length - 1]?.summary,
+  }
+}
+
+export async function getProjectDetail(projectIdOrSlug: string): Promise<PaperclipProjectDetail | null> {
+  const project = await getProject(projectIdOrSlug)
+  if (!project) return null
+  const [missions, handoffs, approvals, events, sessionLinks] = await Promise.all([
+    listProjectMissions(project.id),
+    listHandoffs(project.id),
+    listApprovals(project.id),
+    listProjectEvents(project.id),
+    listProjectSessionLinks(project.id),
+  ])
+  return {
+    project,
+    missions,
+    handoffs,
+    approvals,
+    artifacts: [],
+    events,
+    sessionLinks,
   }
 }
 
