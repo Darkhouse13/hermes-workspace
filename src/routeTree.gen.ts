@@ -12,15 +12,21 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as TerminalRouteImport } from './routes/terminal'
 import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SettingsRouteImport } from './routes/settings'
+import { Route as ProjectsRouteImport } from './routes/projects'
+import { Route as MissionsRouteImport } from './routes/missions'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as JobsRouteImport } from './routes/jobs'
+import { Route as HandoffsRouteImport } from './routes/handoffs'
 import { Route as FilesRouteImport } from './routes/files'
 import { Route as DashboardRouteImport } from './routes/dashboard'
+import { Route as ApprovalsRouteImport } from './routes/approvals'
 import { Route as SplatRouteImport } from './routes/$'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SettingsIndexRouteImport } from './routes/settings/index'
+import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ChatIndexRouteImport } from './routes/chat/index'
 import { Route as SettingsProvidersRouteImport } from './routes/settings/providers'
+import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 import { Route as ChatSessionKeyRouteImport } from './routes/chat/$sessionKey'
 import { Route as ApiWorkspaceRouteImport } from './routes/api/workspace'
 import { Route as ApiTerminalStreamRouteImport } from './routes/api/terminal-stream'
@@ -49,6 +55,14 @@ import { Route as ApiChatEventsRouteImport } from './routes/api/chat-events'
 import { Route as ApiAuthCheckRouteImport } from './routes/api/auth-check'
 import { Route as ApiAuthRouteImport } from './routes/api/auth'
 import { Route as ApiSessionsSendRouteImport } from './routes/api/sessions/send'
+import { Route as ApiPaperclipRouteNextRouteImport } from './routes/api/paperclip/route-next'
+import { Route as ApiPaperclipResumeMissionRouteImport } from './routes/api/paperclip/resume-mission'
+import { Route as ApiPaperclipProjectsRouteImport } from './routes/api/paperclip/projects'
+import { Route as ApiPaperclipMissionsRouteImport } from './routes/api/paperclip/missions'
+import { Route as ApiPaperclipLaunchRoleRouteImport } from './routes/api/paperclip/launch-role'
+import { Route as ApiPaperclipHandoffsRouteImport } from './routes/api/paperclip/handoffs'
+import { Route as ApiPaperclipCompanyRouteImport } from './routes/api/paperclip/company'
+import { Route as ApiPaperclipApprovalsRouteImport } from './routes/api/paperclip/approvals'
 import { Route as ApiOauthPollTokenRouteImport } from './routes/api/oauth.poll-token'
 import { Route as ApiOauthDeviceCodeRouteImport } from './routes/api/oauth.device-code'
 import { Route as ApiMemoryWriteRouteImport } from './routes/api/memory/write'
@@ -57,6 +71,8 @@ import { Route as ApiMemoryReadRouteImport } from './routes/api/memory/read'
 import { Route as ApiMemoryListRouteImport } from './routes/api/memory/list'
 import { Route as ApiHermesJobsJobIdRouteImport } from './routes/api/hermes-jobs.$jobId'
 import { Route as ApiSessionsSessionKeyStatusRouteImport } from './routes/api/sessions/$sessionKey.status'
+import { Route as ApiPaperclipProjectsProjectIdRouteImport } from './routes/api/paperclip/projects.$projectId'
+import { Route as ApiPaperclipMissionsMissionIdRouteImport } from './routes/api/paperclip/missions.$missionId'
 
 const TerminalRoute = TerminalRouteImport.update({
   id: '/terminal',
@@ -73,6 +89,16 @@ const SettingsRoute = SettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MissionsRoute = MissionsRouteImport.update({
+  id: '/missions',
+  path: '/missions',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MemoryRoute = MemoryRouteImport.update({
   id: '/memory',
   path: '/memory',
@@ -83,6 +109,11 @@ const JobsRoute = JobsRouteImport.update({
   path: '/jobs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HandoffsRoute = HandoffsRouteImport.update({
+  id: '/handoffs',
+  path: '/handoffs',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const FilesRoute = FilesRouteImport.update({
   id: '/files',
   path: '/files',
@@ -91,6 +122,11 @@ const FilesRoute = FilesRouteImport.update({
 const DashboardRoute = DashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApprovalsRoute = ApprovalsRouteImport.update({
+  id: '/approvals',
+  path: '/approvals',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SplatRoute = SplatRouteImport.update({
@@ -108,6 +144,11 @@ const SettingsIndexRoute = SettingsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => SettingsRoute,
 } as any)
+const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => ProjectsRoute,
+} as any)
 const ChatIndexRoute = ChatIndexRouteImport.update({
   id: '/chat/',
   path: '/chat/',
@@ -117,6 +158,11 @@ const SettingsProvidersRoute = SettingsProvidersRouteImport.update({
   id: '/providers',
   path: '/providers',
   getParentRoute: () => SettingsRoute,
+} as any)
+const ProjectsProjectIdRoute = ProjectsProjectIdRouteImport.update({
+  id: '/$projectId',
+  path: '/$projectId',
+  getParentRoute: () => ProjectsRoute,
 } as any)
 const ChatSessionKeyRoute = ChatSessionKeyRouteImport.update({
   id: '/chat/$sessionKey',
@@ -258,6 +304,47 @@ const ApiSessionsSendRoute = ApiSessionsSendRouteImport.update({
   path: '/send',
   getParentRoute: () => ApiSessionsRoute,
 } as any)
+const ApiPaperclipRouteNextRoute = ApiPaperclipRouteNextRouteImport.update({
+  id: '/api/paperclip/route-next',
+  path: '/api/paperclip/route-next',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPaperclipResumeMissionRoute =
+  ApiPaperclipResumeMissionRouteImport.update({
+    id: '/api/paperclip/resume-mission',
+    path: '/api/paperclip/resume-mission',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPaperclipProjectsRoute = ApiPaperclipProjectsRouteImport.update({
+  id: '/api/paperclip/projects',
+  path: '/api/paperclip/projects',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPaperclipMissionsRoute = ApiPaperclipMissionsRouteImport.update({
+  id: '/api/paperclip/missions',
+  path: '/api/paperclip/missions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPaperclipLaunchRoleRoute = ApiPaperclipLaunchRoleRouteImport.update({
+  id: '/api/paperclip/launch-role',
+  path: '/api/paperclip/launch-role',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPaperclipHandoffsRoute = ApiPaperclipHandoffsRouteImport.update({
+  id: '/api/paperclip/handoffs',
+  path: '/api/paperclip/handoffs',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPaperclipCompanyRoute = ApiPaperclipCompanyRouteImport.update({
+  id: '/api/paperclip/company',
+  path: '/api/paperclip/company',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPaperclipApprovalsRoute = ApiPaperclipApprovalsRouteImport.update({
+  id: '/api/paperclip/approvals',
+  path: '/api/paperclip/approvals',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiOauthPollTokenRoute = ApiOauthPollTokenRouteImport.update({
   id: '/api/oauth/poll-token',
   path: '/api/oauth/poll-token',
@@ -299,14 +386,30 @@ const ApiSessionsSessionKeyStatusRoute =
     path: '/$sessionKey/status',
     getParentRoute: () => ApiSessionsRoute,
   } as any)
+const ApiPaperclipProjectsProjectIdRoute =
+  ApiPaperclipProjectsProjectIdRouteImport.update({
+    id: '/$projectId',
+    path: '/$projectId',
+    getParentRoute: () => ApiPaperclipProjectsRoute,
+  } as any)
+const ApiPaperclipMissionsMissionIdRoute =
+  ApiPaperclipMissionsMissionIdRouteImport.update({
+    id: '/$missionId',
+    path: '/$missionId',
+    getParentRoute: () => ApiPaperclipMissionsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/approvals': typeof ApprovalsRoute
   '/dashboard': typeof DashboardRoute
   '/files': typeof FilesRoute
+  '/handoffs': typeof HandoffsRoute
   '/jobs': typeof JobsRoute
   '/memory': typeof MemoryRoute
+  '/missions': typeof MissionsRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/terminal': typeof TerminalRoute
@@ -337,8 +440,10 @@ export interface FileRoutesByFullPath {
   '/api/terminal-stream': typeof ApiTerminalStreamRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/chat/': typeof ChatIndexRoute
+  '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/api/hermes-jobs/$jobId': typeof ApiHermesJobsJobIdRoute
   '/api/memory/list': typeof ApiMemoryListRoute
@@ -347,16 +452,29 @@ export interface FileRoutesByFullPath {
   '/api/memory/write': typeof ApiMemoryWriteRoute
   '/api/oauth/device-code': typeof ApiOauthDeviceCodeRoute
   '/api/oauth/poll-token': typeof ApiOauthPollTokenRoute
+  '/api/paperclip/approvals': typeof ApiPaperclipApprovalsRoute
+  '/api/paperclip/company': typeof ApiPaperclipCompanyRoute
+  '/api/paperclip/handoffs': typeof ApiPaperclipHandoffsRoute
+  '/api/paperclip/launch-role': typeof ApiPaperclipLaunchRoleRoute
+  '/api/paperclip/missions': typeof ApiPaperclipMissionsRouteWithChildren
+  '/api/paperclip/projects': typeof ApiPaperclipProjectsRouteWithChildren
+  '/api/paperclip/resume-mission': typeof ApiPaperclipResumeMissionRoute
+  '/api/paperclip/route-next': typeof ApiPaperclipRouteNextRoute
   '/api/sessions/send': typeof ApiSessionsSendRoute
+  '/api/paperclip/missions/$missionId': typeof ApiPaperclipMissionsMissionIdRoute
+  '/api/paperclip/projects/$projectId': typeof ApiPaperclipProjectsProjectIdRoute
   '/api/sessions/$sessionKey/status': typeof ApiSessionsSessionKeyStatusRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/approvals': typeof ApprovalsRoute
   '/dashboard': typeof DashboardRoute
   '/files': typeof FilesRoute
+  '/handoffs': typeof HandoffsRoute
   '/jobs': typeof JobsRoute
   '/memory': typeof MemoryRoute
+  '/missions': typeof MissionsRoute
   '/skills': typeof SkillsRoute
   '/terminal': typeof TerminalRoute
   '/api/auth': typeof ApiAuthRoute
@@ -386,8 +504,10 @@ export interface FileRoutesByTo {
   '/api/terminal-stream': typeof ApiTerminalStreamRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/chat': typeof ChatIndexRoute
+  '/projects': typeof ProjectsIndexRoute
   '/settings': typeof SettingsIndexRoute
   '/api/hermes-jobs/$jobId': typeof ApiHermesJobsJobIdRoute
   '/api/memory/list': typeof ApiMemoryListRoute
@@ -396,17 +516,31 @@ export interface FileRoutesByTo {
   '/api/memory/write': typeof ApiMemoryWriteRoute
   '/api/oauth/device-code': typeof ApiOauthDeviceCodeRoute
   '/api/oauth/poll-token': typeof ApiOauthPollTokenRoute
+  '/api/paperclip/approvals': typeof ApiPaperclipApprovalsRoute
+  '/api/paperclip/company': typeof ApiPaperclipCompanyRoute
+  '/api/paperclip/handoffs': typeof ApiPaperclipHandoffsRoute
+  '/api/paperclip/launch-role': typeof ApiPaperclipLaunchRoleRoute
+  '/api/paperclip/missions': typeof ApiPaperclipMissionsRouteWithChildren
+  '/api/paperclip/projects': typeof ApiPaperclipProjectsRouteWithChildren
+  '/api/paperclip/resume-mission': typeof ApiPaperclipResumeMissionRoute
+  '/api/paperclip/route-next': typeof ApiPaperclipRouteNextRoute
   '/api/sessions/send': typeof ApiSessionsSendRoute
+  '/api/paperclip/missions/$missionId': typeof ApiPaperclipMissionsMissionIdRoute
+  '/api/paperclip/projects/$projectId': typeof ApiPaperclipProjectsProjectIdRoute
   '/api/sessions/$sessionKey/status': typeof ApiSessionsSessionKeyStatusRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$': typeof SplatRoute
+  '/approvals': typeof ApprovalsRoute
   '/dashboard': typeof DashboardRoute
   '/files': typeof FilesRoute
+  '/handoffs': typeof HandoffsRoute
   '/jobs': typeof JobsRoute
   '/memory': typeof MemoryRoute
+  '/missions': typeof MissionsRoute
+  '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
   '/skills': typeof SkillsRoute
   '/terminal': typeof TerminalRoute
@@ -437,8 +571,10 @@ export interface FileRoutesById {
   '/api/terminal-stream': typeof ApiTerminalStreamRoute
   '/api/workspace': typeof ApiWorkspaceRoute
   '/chat/$sessionKey': typeof ChatSessionKeyRoute
+  '/projects/$projectId': typeof ProjectsProjectIdRoute
   '/settings/providers': typeof SettingsProvidersRoute
   '/chat/': typeof ChatIndexRoute
+  '/projects/': typeof ProjectsIndexRoute
   '/settings/': typeof SettingsIndexRoute
   '/api/hermes-jobs/$jobId': typeof ApiHermesJobsJobIdRoute
   '/api/memory/list': typeof ApiMemoryListRoute
@@ -447,7 +583,17 @@ export interface FileRoutesById {
   '/api/memory/write': typeof ApiMemoryWriteRoute
   '/api/oauth/device-code': typeof ApiOauthDeviceCodeRoute
   '/api/oauth/poll-token': typeof ApiOauthPollTokenRoute
+  '/api/paperclip/approvals': typeof ApiPaperclipApprovalsRoute
+  '/api/paperclip/company': typeof ApiPaperclipCompanyRoute
+  '/api/paperclip/handoffs': typeof ApiPaperclipHandoffsRoute
+  '/api/paperclip/launch-role': typeof ApiPaperclipLaunchRoleRoute
+  '/api/paperclip/missions': typeof ApiPaperclipMissionsRouteWithChildren
+  '/api/paperclip/projects': typeof ApiPaperclipProjectsRouteWithChildren
+  '/api/paperclip/resume-mission': typeof ApiPaperclipResumeMissionRoute
+  '/api/paperclip/route-next': typeof ApiPaperclipRouteNextRoute
   '/api/sessions/send': typeof ApiSessionsSendRoute
+  '/api/paperclip/missions/$missionId': typeof ApiPaperclipMissionsMissionIdRoute
+  '/api/paperclip/projects/$projectId': typeof ApiPaperclipProjectsProjectIdRoute
   '/api/sessions/$sessionKey/status': typeof ApiSessionsSessionKeyStatusRoute
 }
 export interface FileRouteTypes {
@@ -455,10 +601,14 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/$'
+    | '/approvals'
     | '/dashboard'
     | '/files'
+    | '/handoffs'
     | '/jobs'
     | '/memory'
+    | '/missions'
+    | '/projects'
     | '/settings'
     | '/skills'
     | '/terminal'
@@ -489,8 +639,10 @@ export interface FileRouteTypes {
     | '/api/terminal-stream'
     | '/api/workspace'
     | '/chat/$sessionKey'
+    | '/projects/$projectId'
     | '/settings/providers'
     | '/chat/'
+    | '/projects/'
     | '/settings/'
     | '/api/hermes-jobs/$jobId'
     | '/api/memory/list'
@@ -499,16 +651,29 @@ export interface FileRouteTypes {
     | '/api/memory/write'
     | '/api/oauth/device-code'
     | '/api/oauth/poll-token'
+    | '/api/paperclip/approvals'
+    | '/api/paperclip/company'
+    | '/api/paperclip/handoffs'
+    | '/api/paperclip/launch-role'
+    | '/api/paperclip/missions'
+    | '/api/paperclip/projects'
+    | '/api/paperclip/resume-mission'
+    | '/api/paperclip/route-next'
     | '/api/sessions/send'
+    | '/api/paperclip/missions/$missionId'
+    | '/api/paperclip/projects/$projectId'
     | '/api/sessions/$sessionKey/status'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/$'
+    | '/approvals'
     | '/dashboard'
     | '/files'
+    | '/handoffs'
     | '/jobs'
     | '/memory'
+    | '/missions'
     | '/skills'
     | '/terminal'
     | '/api/auth'
@@ -538,8 +703,10 @@ export interface FileRouteTypes {
     | '/api/terminal-stream'
     | '/api/workspace'
     | '/chat/$sessionKey'
+    | '/projects/$projectId'
     | '/settings/providers'
     | '/chat'
+    | '/projects'
     | '/settings'
     | '/api/hermes-jobs/$jobId'
     | '/api/memory/list'
@@ -548,16 +715,30 @@ export interface FileRouteTypes {
     | '/api/memory/write'
     | '/api/oauth/device-code'
     | '/api/oauth/poll-token'
+    | '/api/paperclip/approvals'
+    | '/api/paperclip/company'
+    | '/api/paperclip/handoffs'
+    | '/api/paperclip/launch-role'
+    | '/api/paperclip/missions'
+    | '/api/paperclip/projects'
+    | '/api/paperclip/resume-mission'
+    | '/api/paperclip/route-next'
     | '/api/sessions/send'
+    | '/api/paperclip/missions/$missionId'
+    | '/api/paperclip/projects/$projectId'
     | '/api/sessions/$sessionKey/status'
   id:
     | '__root__'
     | '/'
     | '/$'
+    | '/approvals'
     | '/dashboard'
     | '/files'
+    | '/handoffs'
     | '/jobs'
     | '/memory'
+    | '/missions'
+    | '/projects'
     | '/settings'
     | '/skills'
     | '/terminal'
@@ -588,8 +769,10 @@ export interface FileRouteTypes {
     | '/api/terminal-stream'
     | '/api/workspace'
     | '/chat/$sessionKey'
+    | '/projects/$projectId'
     | '/settings/providers'
     | '/chat/'
+    | '/projects/'
     | '/settings/'
     | '/api/hermes-jobs/$jobId'
     | '/api/memory/list'
@@ -598,17 +781,31 @@ export interface FileRouteTypes {
     | '/api/memory/write'
     | '/api/oauth/device-code'
     | '/api/oauth/poll-token'
+    | '/api/paperclip/approvals'
+    | '/api/paperclip/company'
+    | '/api/paperclip/handoffs'
+    | '/api/paperclip/launch-role'
+    | '/api/paperclip/missions'
+    | '/api/paperclip/projects'
+    | '/api/paperclip/resume-mission'
+    | '/api/paperclip/route-next'
     | '/api/sessions/send'
+    | '/api/paperclip/missions/$missionId'
+    | '/api/paperclip/projects/$projectId'
     | '/api/sessions/$sessionKey/status'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SplatRoute: typeof SplatRoute
+  ApprovalsRoute: typeof ApprovalsRoute
   DashboardRoute: typeof DashboardRoute
   FilesRoute: typeof FilesRoute
+  HandoffsRoute: typeof HandoffsRoute
   JobsRoute: typeof JobsRoute
   MemoryRoute: typeof MemoryRoute
+  MissionsRoute: typeof MissionsRoute
+  ProjectsRoute: typeof ProjectsRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
   SkillsRoute: typeof SkillsRoute
   TerminalRoute: typeof TerminalRoute
@@ -646,6 +843,14 @@ export interface RootRouteChildren {
   ApiMemoryWriteRoute: typeof ApiMemoryWriteRoute
   ApiOauthDeviceCodeRoute: typeof ApiOauthDeviceCodeRoute
   ApiOauthPollTokenRoute: typeof ApiOauthPollTokenRoute
+  ApiPaperclipApprovalsRoute: typeof ApiPaperclipApprovalsRoute
+  ApiPaperclipCompanyRoute: typeof ApiPaperclipCompanyRoute
+  ApiPaperclipHandoffsRoute: typeof ApiPaperclipHandoffsRoute
+  ApiPaperclipLaunchRoleRoute: typeof ApiPaperclipLaunchRoleRoute
+  ApiPaperclipMissionsRoute: typeof ApiPaperclipMissionsRouteWithChildren
+  ApiPaperclipProjectsRoute: typeof ApiPaperclipProjectsRouteWithChildren
+  ApiPaperclipResumeMissionRoute: typeof ApiPaperclipResumeMissionRoute
+  ApiPaperclipRouteNextRoute: typeof ApiPaperclipRouteNextRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -671,6 +876,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/missions': {
+      id: '/missions'
+      path: '/missions'
+      fullPath: '/missions'
+      preLoaderRoute: typeof MissionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/memory': {
       id: '/memory'
       path: '/memory'
@@ -685,6 +904,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof JobsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/handoffs': {
+      id: '/handoffs'
+      path: '/handoffs'
+      fullPath: '/handoffs'
+      preLoaderRoute: typeof HandoffsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/files': {
       id: '/files'
       path: '/files'
@@ -697,6 +923,13 @@ declare module '@tanstack/react-router' {
       path: '/dashboard'
       fullPath: '/dashboard'
       preLoaderRoute: typeof DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/approvals': {
+      id: '/approvals'
+      path: '/approvals'
+      fullPath: '/approvals'
+      preLoaderRoute: typeof ApprovalsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$': {
@@ -720,6 +953,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SettingsIndexRouteImport
       parentRoute: typeof SettingsRoute
     }
+    '/projects/': {
+      id: '/projects/'
+      path: '/'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof ProjectsIndexRouteImport
+      parentRoute: typeof ProjectsRoute
+    }
     '/chat/': {
       id: '/chat/'
       path: '/chat'
@@ -733,6 +973,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/settings/providers'
       preLoaderRoute: typeof SettingsProvidersRouteImport
       parentRoute: typeof SettingsRoute
+    }
+    '/projects/$projectId': {
+      id: '/projects/$projectId'
+      path: '/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof ProjectsProjectIdRouteImport
+      parentRoute: typeof ProjectsRoute
     }
     '/chat/$sessionKey': {
       id: '/chat/$sessionKey'
@@ -930,6 +1177,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSessionsSendRouteImport
       parentRoute: typeof ApiSessionsRoute
     }
+    '/api/paperclip/route-next': {
+      id: '/api/paperclip/route-next'
+      path: '/api/paperclip/route-next'
+      fullPath: '/api/paperclip/route-next'
+      preLoaderRoute: typeof ApiPaperclipRouteNextRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/paperclip/resume-mission': {
+      id: '/api/paperclip/resume-mission'
+      path: '/api/paperclip/resume-mission'
+      fullPath: '/api/paperclip/resume-mission'
+      preLoaderRoute: typeof ApiPaperclipResumeMissionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/paperclip/projects': {
+      id: '/api/paperclip/projects'
+      path: '/api/paperclip/projects'
+      fullPath: '/api/paperclip/projects'
+      preLoaderRoute: typeof ApiPaperclipProjectsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/paperclip/missions': {
+      id: '/api/paperclip/missions'
+      path: '/api/paperclip/missions'
+      fullPath: '/api/paperclip/missions'
+      preLoaderRoute: typeof ApiPaperclipMissionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/paperclip/launch-role': {
+      id: '/api/paperclip/launch-role'
+      path: '/api/paperclip/launch-role'
+      fullPath: '/api/paperclip/launch-role'
+      preLoaderRoute: typeof ApiPaperclipLaunchRoleRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/paperclip/handoffs': {
+      id: '/api/paperclip/handoffs'
+      path: '/api/paperclip/handoffs'
+      fullPath: '/api/paperclip/handoffs'
+      preLoaderRoute: typeof ApiPaperclipHandoffsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/paperclip/company': {
+      id: '/api/paperclip/company'
+      path: '/api/paperclip/company'
+      fullPath: '/api/paperclip/company'
+      preLoaderRoute: typeof ApiPaperclipCompanyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/paperclip/approvals': {
+      id: '/api/paperclip/approvals'
+      path: '/api/paperclip/approvals'
+      fullPath: '/api/paperclip/approvals'
+      preLoaderRoute: typeof ApiPaperclipApprovalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/oauth/poll-token': {
       id: '/api/oauth/poll-token'
       path: '/api/oauth/poll-token'
@@ -986,8 +1289,36 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiSessionsSessionKeyStatusRouteImport
       parentRoute: typeof ApiSessionsRoute
     }
+    '/api/paperclip/projects/$projectId': {
+      id: '/api/paperclip/projects/$projectId'
+      path: '/$projectId'
+      fullPath: '/api/paperclip/projects/$projectId'
+      preLoaderRoute: typeof ApiPaperclipProjectsProjectIdRouteImport
+      parentRoute: typeof ApiPaperclipProjectsRoute
+    }
+    '/api/paperclip/missions/$missionId': {
+      id: '/api/paperclip/missions/$missionId'
+      path: '/$missionId'
+      fullPath: '/api/paperclip/missions/$missionId'
+      preLoaderRoute: typeof ApiPaperclipMissionsMissionIdRouteImport
+      parentRoute: typeof ApiPaperclipMissionsRoute
+    }
   }
 }
+
+interface ProjectsRouteChildren {
+  ProjectsProjectIdRoute: typeof ProjectsProjectIdRoute
+  ProjectsIndexRoute: typeof ProjectsIndexRoute
+}
+
+const ProjectsRouteChildren: ProjectsRouteChildren = {
+  ProjectsProjectIdRoute: ProjectsProjectIdRoute,
+  ProjectsIndexRoute: ProjectsIndexRoute,
+}
+
+const ProjectsRouteWithChildren = ProjectsRoute._addFileChildren(
+  ProjectsRouteChildren,
+)
 
 interface SettingsRouteChildren {
   SettingsProvidersRoute: typeof SettingsProvidersRoute
@@ -1029,13 +1360,39 @@ const ApiSessionsRouteWithChildren = ApiSessionsRoute._addFileChildren(
   ApiSessionsRouteChildren,
 )
 
+interface ApiPaperclipMissionsRouteChildren {
+  ApiPaperclipMissionsMissionIdRoute: typeof ApiPaperclipMissionsMissionIdRoute
+}
+
+const ApiPaperclipMissionsRouteChildren: ApiPaperclipMissionsRouteChildren = {
+  ApiPaperclipMissionsMissionIdRoute: ApiPaperclipMissionsMissionIdRoute,
+}
+
+const ApiPaperclipMissionsRouteWithChildren =
+  ApiPaperclipMissionsRoute._addFileChildren(ApiPaperclipMissionsRouteChildren)
+
+interface ApiPaperclipProjectsRouteChildren {
+  ApiPaperclipProjectsProjectIdRoute: typeof ApiPaperclipProjectsProjectIdRoute
+}
+
+const ApiPaperclipProjectsRouteChildren: ApiPaperclipProjectsRouteChildren = {
+  ApiPaperclipProjectsProjectIdRoute: ApiPaperclipProjectsProjectIdRoute,
+}
+
+const ApiPaperclipProjectsRouteWithChildren =
+  ApiPaperclipProjectsRoute._addFileChildren(ApiPaperclipProjectsRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SplatRoute: SplatRoute,
+  ApprovalsRoute: ApprovalsRoute,
   DashboardRoute: DashboardRoute,
   FilesRoute: FilesRoute,
+  HandoffsRoute: HandoffsRoute,
   JobsRoute: JobsRoute,
   MemoryRoute: MemoryRoute,
+  MissionsRoute: MissionsRoute,
+  ProjectsRoute: ProjectsRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,
   SkillsRoute: SkillsRoute,
   TerminalRoute: TerminalRoute,
@@ -1073,6 +1430,14 @@ const rootRouteChildren: RootRouteChildren = {
   ApiMemoryWriteRoute: ApiMemoryWriteRoute,
   ApiOauthDeviceCodeRoute: ApiOauthDeviceCodeRoute,
   ApiOauthPollTokenRoute: ApiOauthPollTokenRoute,
+  ApiPaperclipApprovalsRoute: ApiPaperclipApprovalsRoute,
+  ApiPaperclipCompanyRoute: ApiPaperclipCompanyRoute,
+  ApiPaperclipHandoffsRoute: ApiPaperclipHandoffsRoute,
+  ApiPaperclipLaunchRoleRoute: ApiPaperclipLaunchRoleRoute,
+  ApiPaperclipMissionsRoute: ApiPaperclipMissionsRouteWithChildren,
+  ApiPaperclipProjectsRoute: ApiPaperclipProjectsRouteWithChildren,
+  ApiPaperclipResumeMissionRoute: ApiPaperclipResumeMissionRoute,
+  ApiPaperclipRouteNextRoute: ApiPaperclipRouteNextRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

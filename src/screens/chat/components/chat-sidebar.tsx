@@ -550,13 +550,17 @@ function ChatSidebarComponent({
   const isNewSessionActive =
     pathname === '/new' || pathname.startsWith('/chat/new')
   const _isSettingsActive = pathname === '/settings'
-  const isSkillsActive = pathname === '/skills'
-  const isFilesActive = pathname === '/files'
-  const isTerminalActive = pathname === '/terminal'
-  const isJobsActive = pathname === '/jobs'
-  const isMemoryActive = pathname === '/memory'
-  const mainRoutes = ['/chat', '/new', '/files', '/terminal']
-  const knowledgeRoutes = ['/memory', '/skills']
+  const isSkillsActive = pathname.startsWith('/skills')
+  const isFilesActive = pathname.startsWith('/files')
+  const isTerminalActive = pathname.startsWith('/terminal')
+  const isJobsActive = pathname.startsWith('/jobs')
+  const isMemoryActive = pathname.startsWith('/memory')
+  const isProjectsActive = pathname.startsWith('/projects')
+  const isMissionsActive = pathname.startsWith('/missions')
+  const isHandoffsActive = pathname.startsWith('/handoffs')
+  const isApprovalsActive = pathname.startsWith('/approvals')
+  const mainRoutes = ['/chat', '/new', '/files', '/terminal', '/projects', '/missions']
+  const knowledgeRoutes = ['/memory', '/skills', '/handoffs', '/approvals']
   const systemRoutes = ['/settings', '/logs']
 
   useEffect(() => {
@@ -783,6 +787,20 @@ function ChatSidebarComponent({
       label: 'Jobs',
       active: isJobsActive,
     },
+    {
+      kind: 'link',
+      to: '/projects',
+      icon: File01Icon,
+      label: 'Projects',
+      active: isProjectsActive,
+    },
+    {
+      kind: 'link',
+      to: '/missions',
+      icon: Clock01Icon,
+      label: 'Missions',
+      active: isMissionsActive,
+    },
   ]
 
   const knowledgeItems: Array<NavItemDef> = [
@@ -800,6 +818,20 @@ function ChatSidebarComponent({
       label: 'Skills',
       active: isSkillsActive,
       dataTour: 'skills',
+    },
+    {
+      kind: 'link',
+      to: '/handoffs',
+      icon: Chat01Icon,
+      label: 'Handoffs',
+      active: isHandoffsActive,
+    },
+    {
+      kind: 'link',
+      to: '/approvals',
+      icon: BrainIcon,
+      label: 'Approvals',
+      active: isApprovalsActive,
     },
   ]
 

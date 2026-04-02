@@ -30,7 +30,6 @@ import { LoginScreen } from '@/components/auth/login-screen'
 import { MobileTabBar } from '@/components/mobile-tab-bar'
 import { MobileHamburgerMenu } from '@/components/mobile-hamburger-menu'
 import { MobilePageHeader } from '@/components/mobile-page-header'
-import { HermesOnboarding } from '@/components/onboarding/hermes-onboarding'
 import { MobileTerminalInput } from '@/components/terminal/mobile-terminal-input'
 import { HermesReconnectBanner } from '@/components/hermes-reconnect-banner'
 import { useMobileKeyboard } from '@/hooks/use-mobile-keyboard'
@@ -99,9 +98,13 @@ export function WorkspaceShell() {
     if (path.startsWith('/files')) return 2
     if (path.startsWith('/terminal')) return 3
     if (path.startsWith('/jobs')) return 4
-    if (path.startsWith('/memory')) return 5
-    if (path.startsWith('/skills')) return 6
-    if (path.startsWith('/settings')) return 7
+    if (path.startsWith('/projects')) return 5
+    if (path.startsWith('/missions')) return 6
+    if (path.startsWith('/handoffs')) return 7
+    if (path.startsWith('/approvals')) return 8
+    if (path.startsWith('/memory')) return 9
+    if (path.startsWith('/skills')) return 10
+    if (path.startsWith('/settings')) return 11
     return -1
   }, [])
 
@@ -381,7 +384,6 @@ export function WorkspaceShell() {
       <MobileHamburgerMenu />
       {/* System metrics footer removed */}
       <CommandPalette pathname={pathname} sessions={sessions} />
-      <HermesOnboarding />
     </>
   )
 }

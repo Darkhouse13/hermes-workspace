@@ -11,7 +11,7 @@ import { Toaster } from '@/components/ui/toast'
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour'
 import { KeyboardShortcutsModal } from '@/components/keyboard-shortcuts-modal'
 import { initializeSettingsAppearance } from '@/hooks/use-settings'
-import { HermesOnboarding } from '@/components/onboarding/hermes-onboarding'
+
 
 const APP_CSP = [
   "default-src 'self'",
@@ -218,7 +218,6 @@ function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <HermesOnboarding />
       <GlobalShortcutListener />
       <TerminalShortcutListener />
       <MobilePromptTrigger />

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
+import { useRouterState } from '@tanstack/react-router'
 import { cn } from '@/lib/utils'
 import { ProviderLogo } from '@/components/provider-logo'
 
@@ -113,6 +114,7 @@ function getEnhancedFeatureNames(
 }
 
 export function HermesOnboarding() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname })
   const [show, setShow] = useState(false)
   const [step, setStep] = useState<Step>('welcome')
   const [backendStatus, setBackendStatus] = useState<
@@ -428,10 +430,17 @@ export function HermesOnboarding() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    const allowedRoutes = ['/', '/dashboard', '/chat', '/chat/', '/new']
+    const shouldAppear =
+      allowedRoutes.includes(pathname) || pathname.startsWith('/chat/')
+    if (!shouldAppear) {
+      setShow(false)
+      return
+    }
     if (!localStorage.getItem(ONBOARDING_KEY)) {
       setShow(true)
     }
-  }, [])
+  }, [pathname])
 
   useEffect(() => {
     return () => {

@@ -64,6 +64,100 @@
 .theme-shadow-2 { box-shadow: var(--theme-shadow-2) !important; }
 .theme-shadow-3 { box-shadow: var(--theme-shadow-3) !important; }
 
+.brutalist-panel {
+  background: var(--theme-card);
+  border: 2px solid var(--theme-border);
+  border-radius: 0;
+  box-shadow: 8px 8px 0 color-mix(in srgb, var(--theme-border) 60%, transparent);
+}
+
+.brutalist-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0.65rem 1rem;
+  border: 2px solid var(--theme-text);
+  border-radius: 0;
+  background: var(--theme-text);
+  color: var(--theme-bg);
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+}
+
+.brutalist-button:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 4px 4px 0 color-mix(in srgb, var(--theme-border) 70%, transparent);
+}
+
+.brutalist-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.brutalist-label {
+  color: var(--theme-muted);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.brutalist-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.3rem 0.55rem;
+  border: 2px solid var(--theme-text);
+  border-radius: 0;
+  background: var(--theme-card2);
+  color: var(--theme-text);
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.brutalist-badge--success { border-color: #16a34a; color: #16a34a; }
+.brutalist-badge--warning { border-color: #d97706; color: #d97706; }
+.brutalist-badge--danger { border-color: #dc2626; color: #dc2626; }
+.brutalist-badge--info { border-color: #2563eb; color: #2563eb; }
+
+.brutalist-textarea {
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+  padding: 0.8rem 0.9rem;
+  border: 2px solid var(--theme-border);
+  border-radius: 0;
+  background: var(--theme-bg);
+  color: var(--theme-text);
+}
+
+.brutalist-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.65rem;
+  border: 2px solid var(--theme-border);
+  text-transform: uppercase;
+}
+
+.brutalist-stat strong {
+  font-size: 1rem;
+  color: var(--theme-text);
+}
+
+.brutalist-stat span {
+  font-size: 0.68rem;
+  color: var(--theme-muted);
+  letter-spacing: 0.08em;
+}
+
 /* KPI card utility (label + value + trend badge) */
 .kpi-card {
   border: 1px solid var(--theme-border);

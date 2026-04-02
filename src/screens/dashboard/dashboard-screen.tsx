@@ -34,6 +34,13 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
+async function getPaperclipProjectSummaries(): Promise<Array<Record<string, unknown>>> {
+  const response = await fetch('/api/paperclip/projects')
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  const data = await response.json()
+  return Array.isArray(data?.items) ? data.items : []
+}
+
 // ── Glass Card ───────────────────────────────────────────────────
 
 function GlassCard({
@@ -377,6 +384,11 @@ export function DashboardScreen() {
   const navigate = useNavigate()
   const sessionsAvailable = isFeatureAvailable('sessions')
   const skillsAvailable = isFeatureAvailable('skills')
+  const paperclipQuery = useQuery({
+    queryKey: ['paperclip-dashboard'],
+    queryFn: getPaperclipProjectSummaries,
+    staleTime: 10_000,
+  })
   const sessionsQuery = useQuery({
     queryKey: chatQueryKeys.sessions,
     queryFn: () => listSessions(50, 0),
@@ -448,6 +460,27 @@ export function DashboardScreen() {
           description={getUnavailableReason('sessions')}
         />
       )}
+
+      <GlassCard
+        title="Paperclip Mission Control"
+        titleRight={
+          <button
+            type="button"
+            className="text-[10px] text-neutral-600 hover:text-neutral-400 transition-colors"
+            onClick={() => navigate({ to: '/projects' })}
+          >
+            Open projects →
+          </button>
+        }
+        accentColor="#ef4444"
+      >
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <MetricTile label="Projects" value={formatNumber(paperclipQuery.data?.length ?? 0)} icon="📦" accentColor="#ef4444" />
+          <MetricTile label="Active Missions" value={formatNumber((paperclipQuery.data ?? []).reduce((acc, item) => acc + Number(item.activeMissionCount ?? 0), 0))} icon="🎯" accentColor="#f97316" />
+          <MetricTile label="Blocked" value={formatNumber((paperclipQuery.data ?? []).reduce((acc, item) => acc + Number(item.blockedMissionCount ?? 0), 0))} icon="⛔" accentColor="#dc2626" />
+          <MetricTile label="Approvals" value={formatNumber((paperclipQuery.data ?? []).reduce((acc, item) => acc + Number(item.pendingApprovalCount ?? 0), 0))} icon="✅" accentColor="#2563eb" />
+        </div>
+      </GlassCard>
 
       {/* ── Charts + Model + Skills ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
