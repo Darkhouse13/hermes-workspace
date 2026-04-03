@@ -14,6 +14,7 @@ import { Route as SkillsRouteImport } from './routes/skills'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as MissionsRouteImport } from './routes/missions'
+import { Route as MissionControlRouteImport } from './routes/mission-control'
 import { Route as MemoryRouteImport } from './routes/memory'
 import { Route as JobsRouteImport } from './routes/jobs'
 import { Route as HandoffsRouteImport } from './routes/handoffs'
@@ -97,6 +98,11 @@ const ProjectsRoute = ProjectsRouteImport.update({
 const MissionsRoute = MissionsRouteImport.update({
   id: '/missions',
   path: '/missions',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const MissionControlRoute = MissionControlRouteImport.update({
+  id: '/mission-control',
+  path: '/mission-control',
   getParentRoute: () => rootRouteImport,
 } as any)
 const MemoryRoute = MemoryRouteImport.update({
@@ -408,6 +414,7 @@ export interface FileRoutesByFullPath {
   '/handoffs': typeof HandoffsRoute
   '/jobs': typeof JobsRoute
   '/memory': typeof MemoryRoute
+  '/mission-control': typeof MissionControlRoute
   '/missions': typeof MissionsRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
@@ -474,6 +481,7 @@ export interface FileRoutesByTo {
   '/handoffs': typeof HandoffsRoute
   '/jobs': typeof JobsRoute
   '/memory': typeof MemoryRoute
+  '/mission-control': typeof MissionControlRoute
   '/missions': typeof MissionsRoute
   '/skills': typeof SkillsRoute
   '/terminal': typeof TerminalRoute
@@ -539,6 +547,7 @@ export interface FileRoutesById {
   '/handoffs': typeof HandoffsRoute
   '/jobs': typeof JobsRoute
   '/memory': typeof MemoryRoute
+  '/mission-control': typeof MissionControlRoute
   '/missions': typeof MissionsRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRouteWithChildren
@@ -607,6 +616,7 @@ export interface FileRouteTypes {
     | '/handoffs'
     | '/jobs'
     | '/memory'
+    | '/mission-control'
     | '/missions'
     | '/projects'
     | '/settings'
@@ -673,6 +683,7 @@ export interface FileRouteTypes {
     | '/handoffs'
     | '/jobs'
     | '/memory'
+    | '/mission-control'
     | '/missions'
     | '/skills'
     | '/terminal'
@@ -737,6 +748,7 @@ export interface FileRouteTypes {
     | '/handoffs'
     | '/jobs'
     | '/memory'
+    | '/mission-control'
     | '/missions'
     | '/projects'
     | '/settings'
@@ -804,6 +816,7 @@ export interface RootRouteChildren {
   HandoffsRoute: typeof HandoffsRoute
   JobsRoute: typeof JobsRoute
   MemoryRoute: typeof MemoryRoute
+  MissionControlRoute: typeof MissionControlRoute
   MissionsRoute: typeof MissionsRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
   SettingsRoute: typeof SettingsRouteWithChildren
@@ -888,6 +901,13 @@ declare module '@tanstack/react-router' {
       path: '/missions'
       fullPath: '/missions'
       preLoaderRoute: typeof MissionsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/mission-control': {
+      id: '/mission-control'
+      path: '/mission-control'
+      fullPath: '/mission-control'
+      preLoaderRoute: typeof MissionControlRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/memory': {
@@ -1391,6 +1411,7 @@ const rootRouteChildren: RootRouteChildren = {
   HandoffsRoute: HandoffsRoute,
   JobsRoute: JobsRoute,
   MemoryRoute: MemoryRoute,
+  MissionControlRoute: MissionControlRoute,
   MissionsRoute: MissionsRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   SettingsRoute: SettingsRouteWithChildren,

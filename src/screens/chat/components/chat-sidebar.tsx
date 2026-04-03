@@ -556,10 +556,11 @@ function ChatSidebarComponent({
   const isJobsActive = pathname.startsWith('/jobs')
   const isMemoryActive = pathname.startsWith('/memory')
   const isProjectsActive = pathname.startsWith('/projects')
+  const isMissionControlActive = pathname.startsWith('/mission-control')
   const isMissionsActive = pathname.startsWith('/missions')
   const isHandoffsActive = pathname.startsWith('/handoffs')
   const isApprovalsActive = pathname.startsWith('/approvals')
-  const mainRoutes = ['/chat', '/new', '/files', '/terminal', '/projects', '/missions']
+  const mainRoutes = ['/chat', '/new', '/files', '/terminal', '/projects', '/mission-control', '/missions']
   const knowledgeRoutes = ['/memory', '/skills', '/handoffs', '/approvals']
   const systemRoutes = ['/settings', '/logs']
 
@@ -793,6 +794,13 @@ function ChatSidebarComponent({
       icon: File01Icon,
       label: 'Projects',
       active: isProjectsActive,
+    },
+    {
+      kind: 'link',
+      to: '/mission-control',
+      icon: DashboardSquare01Icon,
+      label: 'Mission Control',
+      active: isMissionControlActive,
     },
     {
       kind: 'link',

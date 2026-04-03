@@ -99,12 +99,13 @@ export function WorkspaceShell() {
     if (path.startsWith('/terminal')) return 3
     if (path.startsWith('/jobs')) return 4
     if (path.startsWith('/projects')) return 5
-    if (path.startsWith('/missions')) return 6
-    if (path.startsWith('/handoffs')) return 7
-    if (path.startsWith('/approvals')) return 8
-    if (path.startsWith('/memory')) return 9
-    if (path.startsWith('/skills')) return 10
-    if (path.startsWith('/settings')) return 11
+    if (path.startsWith('/mission-control')) return 6
+    if (path.startsWith('/missions')) return 7
+    if (path.startsWith('/handoffs')) return 8
+    if (path.startsWith('/approvals')) return 9
+    if (path.startsWith('/memory')) return 10
+    if (path.startsWith('/skills')) return 11
+    if (path.startsWith('/settings')) return 12
     return -1
   }, [])
 
