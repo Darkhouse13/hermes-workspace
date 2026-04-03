@@ -4,6 +4,7 @@ import { json } from '@tanstack/react-start'
 import { isAuthenticated } from '@/server/auth-middleware'
 import { requireJsonContentType } from '@/server/rate-limit'
 import { getProjectDetail, updateProject } from '@/server/paperclip-projects'
+import type { PaperclipProject } from '@/types/paperclip'
 
 export const Route = createFileRoute('/api/paperclip/projects/$projectId')({
   server: {
@@ -19,7 +20,7 @@ export const Route = createFileRoute('/api/paperclip/projects/$projectId')({
         const csrf = requireJsonContentType(request)
         if (csrf) return csrf
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
-        return json({ ok: true, project: await updateProject(params.projectId, body as any) })
+        return json({ ok: true, project: await updateProject(params.projectId, body as Partial<PaperclipProject>) })
       },
     },
   },

@@ -1,7 +1,6 @@
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Chat01Icon,
-  Clock01Icon,
   CommandIcon,
   File01Icon,
   FlashIcon,

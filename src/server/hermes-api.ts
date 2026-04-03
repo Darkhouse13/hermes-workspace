@@ -12,8 +12,11 @@ import {
   getCapabilities,
   probeGateway,
 } from './gateway-capabilities'
+import { createLogger } from './logger'
 
-console.log(`[hermes-api] Configured API: ${HERMES_API}`)
+const log = createLogger('hermes-api')
+
+log.info(`Configured API: ${HERMES_API}`)
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -178,7 +181,8 @@ export function toChatMessage(
   } else if (msg.tool_calls && typeof msg.tool_calls === 'string') {
     try {
       toolCalls = JSON.parse(msg.tool_calls)
-    } catch {
+    } catch (err) {
+      log.warn('Failed to parse tool_calls JSON string', { error: String(err) })
       toolCalls = undefined
     }
   }
@@ -308,7 +312,7 @@ export async function streamChat(
   let buffer = ''
   let currentEvent = ''
 
-  while (true) {
+  for (;;) {
     const { done, value } = await reader.read()
     if (done) break
 
@@ -325,8 +329,8 @@ export async function streamChat(
         try {
           const data = JSON.parse(dataStr) as Record<string, unknown>
           opts.onEvent({ event: currentEvent || 'message', data })
-        } catch {
-          // skip malformed JSON
+        } catch (err) {
+          log.warn('Skipping malformed JSON in SSE stream', { error: String(err), data: dataStr.slice(0, 200) })
         }
       }
     }

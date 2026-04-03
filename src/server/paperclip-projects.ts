@@ -1,4 +1,7 @@
 import type { PaperclipProject, PaperclipProjectDetail, PaperclipProjectSummary } from '@/types/paperclip'
+import { createLogger } from './logger'
+
+const log = createLogger('paperclip-projects')
 import {
   getPaperclipProjectApprovalsPath,
   getPaperclipProjectArtifactsPath,
@@ -149,7 +152,9 @@ export async function summarizeProject(project: PaperclipProject): Promise<Paper
       if (mission.status && !['completed', 'cancelled'].includes(mission.status)) activeMissionCount += 1
       if (mission.status === 'blocked') blockedMissionCount += 1
     }
-  } catch {}
+  } catch (err) {
+    log.warn('Failed to read missions directory', { dir: missionsDir, error: String(err) })
+  }
 
   return {
     project,

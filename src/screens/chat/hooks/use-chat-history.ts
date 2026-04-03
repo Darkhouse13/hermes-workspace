@@ -13,7 +13,7 @@ import {
 import { useChatSettingsStore } from '../../../hooks/use-chat-settings'
 import type {PendingSendPayload} from '../pending-send';
 import type { QueryClient } from '@tanstack/react-query'
-import type { ChatMessage, HistoryResponse } from '../types'
+import type { ChatMessage, ExecNotification, HistoryResponse } from '../types'
 
 const PORTABLE_HISTORY_STORAGE_KEY = 'hermes_portable_chat_main'
 const PORTABLE_HISTORY_LIMIT = 100
@@ -57,12 +57,6 @@ function readPortableHistory(): HistoryResponse {
   } catch {
     return { sessionKey: 'main', messages: [] }
   }
-}
-
-type ExecNotification = {
-  name: string
-  exitCode: number | null
-  ok: boolean | null
 }
 
 function coerceExitCode(value: unknown): number | null {
@@ -120,7 +114,7 @@ function parseExecNotification(text: string): ExecNotification | null {
 
   if (!name) {
     const withoutPrefix = trimmed.replace(/^Exec completed[:\s-]*/i, '').trim()
-    const nameMatch = withoutPrefix.match(/^([^\(\{\[]+?)(?:\s*\(|\s*$)/)
+    const nameMatch = withoutPrefix.match(/^([^({\[]+?)(?:\s*\(|\s*$)/)
     if (nameMatch) name = nameMatch[1].trim()
   }
 
@@ -160,10 +154,10 @@ function getAttachmentSignature(message: ChatMessage): string {
 
   return message.attachments
     .map((attachment) => {
-      const name = typeof attachment?.name === 'string' ? attachment.name : ''
-      const size = typeof attachment?.size === 'number' ? String(attachment.size) : ''
+      const name = typeof attachment.name === 'string' ? attachment.name : ''
+      const size = typeof attachment.size === 'number' ? String(attachment.size) : ''
       const type =
-        typeof attachment?.contentType === 'string'
+        typeof attachment.contentType === 'string'
           ? attachment.contentType
           : ''
       return `${name}:${size}:${type}`

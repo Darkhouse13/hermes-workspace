@@ -6,7 +6,6 @@ import {
   Chat01Icon,
   Clock01Icon,
   CommandLineIcon,
-  File01Icon,
   Menu01Icon,
   PuzzleIcon,
   Settings01Icon,
@@ -72,7 +71,6 @@ export function MobileHamburgerMenu() {
   const navigate = useNavigate()
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const profileDisplayName = useChatSettingsStore(selectChatProfileDisplayName)
-  const isChatRoute = pathname.startsWith('/chat') || pathname === '/new' || pathname === '/'
 
   function handleNav(to: string) {
     hapticTap()

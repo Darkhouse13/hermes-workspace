@@ -108,29 +108,6 @@ function UnavailableWidget({
   )
 }
 
-// ── System Glance (ClawSuite-style status bar) ───────────────────
-
-function SystemGlance({ sessions, connected, model, provider, tokens, cost }: {
-  sessions: number; connected: boolean; model: string; provider: string; tokens: string; cost: string
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-card)] px-5 py-2.5 backdrop-blur-sm">
-      <span className={cn('size-2 shrink-0 rounded-full', connected ? 'bg-emerald-500 animate-pulse' : 'bg-red-500')} />
-      <div className="flex flex-1 items-center gap-x-4 overflow-x-auto">
-        <span className="text-xs font-medium text-ink">{model}</span>
-        <span className="text-neutral-300 dark:text-neutral-700">·</span>
-        <span className="text-xs text-neutral-500">{provider}</span>
-        <span className="text-neutral-300 dark:text-neutral-700">·</span>
-        <span className="text-xs text-neutral-500">{sessions} sessions</span>
-        <span className="text-neutral-300 dark:text-neutral-700">·</span>
-        <span className="text-xs font-bold tabular-nums text-ink">{tokens} tokens</span>
-        <span className="text-neutral-300 dark:text-neutral-700">·</span>
-        <span className="text-xs text-neutral-400">{cost}</span>
-      </div>
-    </div>
-  )
-}
-
 // ── Metric Tile ──────────────────────────────────────────────────
 
 function MetricTile({ label, value, sub, icon, accentColor }: {
@@ -222,7 +199,7 @@ function ModelCard() {
   const modelName = (modelBlock?.default ?? config?.model ?? '—') as string
   const provider = (modelBlock?.provider ?? config?.provider ?? '—') as string
   const baseUrl = (modelBlock?.base_url ?? config?.base_url ?? '') as string
-  const connected = caps?.sessions === true
+  const connected = caps.sessions === true
   const fallbackBlock = config?.fallback_model as Record<string, unknown> | undefined
   const fallbackModel = fallbackBlock?.model as string | undefined
 
@@ -263,7 +240,7 @@ function ModelCard() {
             <div className="flex size-7 items-center justify-center rounded-md bg-amber-500/10 text-sm">🔄</div>
             <div className="min-w-0 flex-1">
               <div className="font-mono text-[13px] text-ink truncate">{fallbackModel}</div>
-              <div className="text-[10px] text-muted font-mono truncate">{(fallbackBlock?.provider as string) ?? ''}</div>
+              <div className="text-[10px] text-muted font-mono truncate">{(fallbackBlock?.provider as string | undefined) ?? ''}</div>
             </div>
           </div>
         )}
@@ -397,7 +374,6 @@ export function DashboardScreen() {
   })
 
   const sessions = (sessionsQuery.data ?? []) as HermesSession[]
-  const caps = getCapabilities()
 
   const stats = useMemo(() => {
     let totalMessages = 0, totalToolCalls = 0, totalTokens = 0

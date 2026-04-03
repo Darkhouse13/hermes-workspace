@@ -214,20 +214,15 @@ function normalizeModelUsage(raw: unknown): Array<ModelUsage> {
     return Object.entries(raw as Record<string, unknown>)
       .map(([model, data]) => {
         if (!data || typeof data !== 'object') return null
+        const d = data as Record<string, unknown>
         const inputTokens = readNumber(
-          (data as any).inputTokens ??
-            (data as any).input_tokens ??
-            (data as any).promptTokens ??
-            (data as any).prompt_tokens,
+          d.inputTokens ?? d.input_tokens ?? d.promptTokens ?? d.prompt_tokens,
         )
         const outputTokens = readNumber(
-          (data as any).outputTokens ??
-            (data as any).output_tokens ??
-            (data as any).completionTokens ??
-            (data as any).completion_tokens,
+          d.outputTokens ?? d.output_tokens ?? d.completionTokens ?? d.completion_tokens,
         )
         const costProvided = readNumber(
-          (data as any).costUsd ?? (data as any).cost ?? (data as any).usd,
+          d.costUsd ?? d.cost ?? d.usd,
         )
         const costUsd =
           costProvided > 0
@@ -294,54 +289,55 @@ function normalizeSessions(raw: unknown): Array<SessionUsage> {
 }
 
 function parseSessionStatus(payload: unknown): UsageSummary {
-  const root = payload && typeof payload === 'object' ? (payload as any) : {}
-  const usage = root.today ?? root.usage ?? root.summary ?? root.totals ?? root
-
-  const tokensRoot = usage?.tokens ?? usage?.tokenUsage ?? usage
+  const root: Record<string, unknown> = payload && typeof payload === 'object' ? (payload as Record<string, unknown>) : {}
+  const asRec = (v: unknown): Record<string, unknown> =>
+    v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
+  const usage = asRec(root.today ?? root.usage ?? root.summary ?? root.totals ?? root)
+  const tokensRoot = asRec(usage.tokens ?? usage.tokenUsage ?? usage)
   const inputTokens = readNumber(
-    tokensRoot?.inputTokens ??
-      tokensRoot?.input_tokens ??
-      tokensRoot?.promptTokens ??
-      tokensRoot?.prompt_tokens ??
-      usage?.inputTokens ??
-      usage?.input_tokens ??
-      usage?.promptTokens ??
-      usage?.prompt_tokens,
+    tokensRoot.inputTokens ??
+      tokensRoot.input_tokens ??
+      tokensRoot.promptTokens ??
+      tokensRoot.prompt_tokens ??
+      usage.inputTokens ??
+      usage.input_tokens ??
+      usage.promptTokens ??
+      usage.prompt_tokens,
   )
   const outputTokens = readNumber(
-    tokensRoot?.outputTokens ??
-      tokensRoot?.output_tokens ??
-      tokensRoot?.completionTokens ??
-      tokensRoot?.completion_tokens ??
-      usage?.outputTokens ??
-      usage?.output_tokens ??
-      usage?.completionTokens ??
-      usage?.completion_tokens,
+    tokensRoot.outputTokens ??
+      tokensRoot.output_tokens ??
+      tokensRoot.completionTokens ??
+      tokensRoot.completion_tokens ??
+      usage.outputTokens ??
+      usage.output_tokens ??
+      usage.completionTokens ??
+      usage.completion_tokens,
   )
   const contextPercent = readPercent(
-    usage?.contextPercent ??
-      usage?.context_percent ??
-      usage?.context ??
-      root?.contextPercent ??
-      root?.context_percent,
+    usage.contextPercent ??
+      usage.context_percent ??
+      usage.context ??
+      root.contextPercent ??
+      root.context_percent,
   )
 
   const modelUsage = normalizeModelUsage(
-    root.models ?? root.modelUsage ?? root.usageByModel ?? usage?.models,
+    root.models ?? root.modelUsage ?? root.usageByModel ?? usage.models,
   )
 
   const sessions = normalizeSessions(root.sessions ?? root.history ?? [])
 
   const baseModel =
-    String(root.model ?? usage?.model ?? '').trim() ||
+    String(root.model ?? usage.model ?? '').trim() ||
     (modelUsage[0]?.model ?? 'unknown')
   const dailyCostProvided = readNumber(
-    usage?.costUsd ??
-      usage?.dailyCost ??
-      usage?.cost ??
-      root?.costUsd ??
-      root?.dailyCost ??
-      root?.cost,
+    usage.costUsd ??
+      usage.dailyCost ??
+      usage.cost ??
+      root.costUsd ??
+      root.dailyCost ??
+      root.cost,
   )
   const dailyCostFromModels = modelUsage.reduce(
     (sum, model) => sum + model.costUsd,

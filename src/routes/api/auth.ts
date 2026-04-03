@@ -1,6 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { json } from '@tanstack/react-start'
 import { z } from 'zod'
+import { createLogger } from '../../server/logger'
+
+const log = createLogger('auth')
 import {
   createSessionCookie,
   generateSessionToken,
@@ -80,7 +83,7 @@ export const Route = createFileRoute('/api/auth')({
             },
           )
         } catch (err) {
-          if (import.meta.env.DEV) console.error('[/api/auth] Error:', err)
+          log.error('Authentication error', { error: String(err) })
           return json(
             { ok: false, error: 'Authentication failed' },
             { status: 500 },

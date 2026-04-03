@@ -47,17 +47,14 @@ import { usePinnedModels } from '@/hooks/use-pinned-models'
 import { cn } from '@/lib/utils'
 import { useVoiceInput } from '@/hooks/use-voice-input'
 import { useVoiceRecorder } from '@/hooks/use-voice-recorder'
-import { toast } from '@/components/ui/toast'
+import {
+  useComposerAttachments,
+  formatFileSize,
+} from '../hooks/use-composer-attachments'
+import { isImageMimeType } from '@/lib/chat-content-normalization'
+import type { ComposerAttachment } from '../hooks/use-composer-attachments'
 
-type ChatComposerAttachment = {
-  id: string
-  name: string
-  contentType: string
-  size: number
-  dataUrl?: string
-  previewUrl?: string
-  kind?: 'image' | 'file' | 'audio'
-}
+type ChatComposerAttachment = ComposerAttachment
 
 type ThinkingLevel = 'off' | 'low' | 'adaptive'
 
@@ -170,7 +167,7 @@ async function fetchModels(): Promise<{
     const richRes = await fetch('/api/hermes-proxy/api/available-models')
     if (richRes.ok) {
       const richData = (await richRes.json()) as HermesAvailableModelsResponse
-      const authenticatedProviders = (richData.providers || []).filter((p) => p.authenticated)
+      const authenticatedProviders = richData.providers.filter((p) => p.authenticated)
       const configuredProviders = authenticatedProviders.map((p) => p.id)
       const providerLabels = authenticatedProviders.reduce<Record<string, string>>(
         (acc, provider) => {
@@ -180,7 +177,7 @@ async function fetchModels(): Promise<{
         {},
       )
       const currentProvider = readModelText(richData.provider)
-      const models = (richData.models || []).map((model) => ({
+      const models = richData.models.map((model) => ({
         id: model.id,
         name: model.id,
         provider: currentProvider || undefined,
@@ -257,27 +254,6 @@ async function fetchModels(): Promise<{
   return { ok: true, models: models as Array<ModelCatalogEntry>, configuredProviders }
 }
 
-async function fetchModelsForProvider(
-  provider: string,
-): Promise<Array<ModelCatalogEntry>> {
-  const normalizedProvider = provider.trim()
-  if (!normalizedProvider) return []
-
-  const response = await fetch(
-    `/api/hermes-proxy/api/available-models?provider=${encodeURIComponent(normalizedProvider)}`,
-  )
-  if (!response.ok) {
-    throw new Error(`Hermes models request failed (${response.status})`)
-  }
-
-  const payload = (await response.json()) as HermesAvailableModelsResponse
-  return (payload.models || []).map((model) => ({
-    id: model.id,
-    name: model.id,
-    provider: normalizedProvider,
-  }))
-}
-
 async function switchModel(
   model: string,
   provider?: string,
@@ -313,255 +289,8 @@ async function switchModel(
   }
 }
 
-/** Maximum file size accepted from picker/drop before processing (50MB). */
-const MAX_ATTACHMENT_FILE_SIZE = 50 * 1024 * 1024
-/** Longest side target for resized images. */
-const MAX_IMAGE_DIMENSION = 1920
-/** Initial JPEG compression quality (0-1). */
-const IMAGE_QUALITY = 0.85
-/** Safe image attachment limit after processing (1MB). */
-const MAX_TRANSPORT_IMAGE_SIZE = 1 * 1024 * 1024
-
-const IMAGE_EXTENSION_TO_MIME: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-  bmp: 'image/bmp',
-  svg: 'image/svg+xml',
-  avif: 'image/avif',
-  heic: 'image/heic',
-  heif: 'image/heif',
-  tif: 'image/tiff',
-  tiff: 'image/tiff',
-}
-
-const TEXT_EXTENSION_TO_MIME: Record<string, string> = {
-  md: 'text/markdown',
-  txt: 'text/plain',
-  json: 'application/json',
-  csv: 'text/csv',
-  ts: 'text/plain',
-  tsx: 'text/plain',
-  js: 'text/plain',
-  py: 'text/plain',
-}
-
-function normalizeMimeType(value: string): string {
-  return value.trim().toLowerCase()
-}
-
-function isImageMimeType(value: string): boolean {
-  const normalized = normalizeMimeType(value)
-  return normalized.startsWith('image/')
-}
-
-function inferImageMimeTypeFromFileName(name: string): string {
-  const match = /\.([a-z0-9]+)$/i.exec(name.trim())
-  if (!match?.[1]) return ''
-  return IMAGE_EXTENSION_TO_MIME[match[1].toLowerCase()] || ''
-}
-
-function inferTextMimeTypeFromFileName(name: string): string {
-  const match = /\.([a-z0-9]+)$/i.exec(name.trim())
-  if (!match?.[1]) return ''
-  return TEXT_EXTENSION_TO_MIME[match[1].toLowerCase()] || ''
-}
-
-function isTextMimeType(value: string): boolean {
-  const normalized = normalizeMimeType(value)
-  return normalized.startsWith('text/') || normalized === 'application/json'
-}
-
-function isImageFile(file: File): boolean {
-  if (isImageMimeType(file.type)) return true
-  return inferImageMimeTypeFromFileName(file.name).length > 0
-}
-
-function isTextFile(file: File): boolean {
-  if (isTextMimeType(file.type)) return true
-  return inferTextMimeTypeFromFileName(file.name).length > 0
-}
-
-function formatFileSize(size: number): string {
-  if (!Number.isFinite(size) || size <= 0) return ''
-  const units = ['B', 'KB', 'MB', 'GB'] as const
-  let value = size
-  let unitIndex = 0
-  while (value >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024
-    unitIndex += 1
-  }
-  const precision = value >= 100 || unitIndex === 0 ? 0 : 1
-  return `${value.toFixed(precision)} ${units[unitIndex]}`
-}
-
-function hasAttachableData(dt: DataTransfer | null): boolean {
-  if (!dt) return false
-  const items = Array.from(dt.items)
-  if (
-    items.some(
-      (item) =>
-        item.kind === 'file' &&
-        (isImageMimeType(item.type) || isTextMimeType(item.type) || item.type.trim().length === 0),
-    )
-  )
-    return true
-  const files = Array.from(dt.files)
-  return files.some(
-    (file) => isImageFile(file) || isTextFile(file) || file.type.trim().length === 0,
-  )
-}
-
-function collectFilesFromDataTransfer(dt: DataTransfer | null): Array<File> {
-  if (!dt) return []
-  const files: Array<File> = []
-  const seen = new Set<string>()
-
-  const pushFile = (file: File | null) => {
-    if (!file) return
-    const key = `${file.name}:${file.size}:${file.lastModified}:${file.type}`
-    if (seen.has(key)) return
-    seen.add(key)
-    files.push(file)
-  }
-
-  for (const item of Array.from(dt.items)) {
-    if (item.kind !== 'file') continue
-    pushFile(item.getAsFile())
-  }
-
-  for (const file of Array.from(dt.files)) {
-    pushFile(file)
-  }
-
-  return files
-}
-
-async function readFileAsDataUrl(file: File): Promise<string | null> {
-  return await new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      resolve(typeof reader.result === 'string' ? reader.result : null)
-    }
-    reader.onerror = () => resolve(null)
-    reader.readAsDataURL(file)
-  })
-}
-
-async function readFileAsText(file: File): Promise<string | null> {
-  return await new Promise((resolve) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      resolve(typeof reader.result === 'string' ? reader.result : null)
-    }
-    reader.onerror = () => resolve(null)
-    reader.readAsText(file)
-  })
-}
-
 function readText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
-}
-
-function getResolvedModelKey(model: string, provider?: string): string {
-  const normalizedModel = model.trim()
-  const normalizedProvider =
-    typeof provider === 'string' ? provider.trim() : ''
-
-  if (!normalizedModel) return ''
-  if (!normalizedProvider) return normalizedModel
-  if (normalizedModel.startsWith(`${normalizedProvider}/`)) return normalizedModel
-  return `${normalizedProvider}/${normalizedModel}`
-}
-
-function isCanvasSupported(): boolean {
-  if (typeof document === 'undefined') return false
-  try {
-    const canvas = document.createElement('canvas')
-    return Boolean(canvas.getContext('2d'))
-  } catch {
-    return false
-  }
-}
-
-function estimateDataUrlBytes(dataUrl: string): number {
-  const commaIndex = dataUrl.indexOf(',')
-  const base64 = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl
-  if (!base64) return 0
-  const padding =
-    base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0
-  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding)
-}
-
-function readDataUrlMimeType(dataUrl: string): string | null {
-  const match = /^data:([^;]+);base64,/.exec(dataUrl)
-  return match?.[1]?.trim() || null
-}
-
-async function compressImageToDataUrl(file: File): Promise<string> {
-  if (!isCanvasSupported()) {
-    throw new Error('Image compression not available')
-  }
-
-  return await new Promise((resolve, reject) => {
-    const image = new Image()
-    const objectUrl = URL.createObjectURL(file)
-    const cleanup = () => URL.revokeObjectURL(objectUrl)
-
-    image.onload = () => {
-      try {
-        let width = image.width
-        let height = image.height
-
-        if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
-          if (width > height) {
-            height = Math.round((height * MAX_IMAGE_DIMENSION) / width)
-            width = MAX_IMAGE_DIMENSION
-          } else {
-            width = Math.round((width * MAX_IMAGE_DIMENSION) / height)
-            height = MAX_IMAGE_DIMENSION
-          }
-        }
-
-        const canvas = document.createElement('canvas')
-        canvas.width = width
-        canvas.height = height
-        const context = canvas.getContext('2d')
-        if (!context) {
-          cleanup()
-          reject(new Error('Failed to get canvas context'))
-          return
-        }
-
-        context.drawImage(image, 0, 0, width, height)
-
-        let quality = IMAGE_QUALITY
-        let dataUrl = canvas.toDataURL('image/jpeg', quality)
-        let bytes = estimateDataUrlBytes(dataUrl)
-
-        while (bytes > MAX_TRANSPORT_IMAGE_SIZE && quality > 0.4) {
-          quality -= 0.08
-          dataUrl = canvas.toDataURL('image/jpeg', quality)
-          bytes = estimateDataUrlBytes(dataUrl)
-        }
-
-        cleanup()
-        resolve(dataUrl)
-      } catch (error) {
-        cleanup()
-        reject(error instanceof Error ? error : new Error('Compression failed'))
-      }
-    }
-
-    image.onerror = () => {
-      cleanup()
-      reject(new Error('Failed to load image'))
-    }
-
-    image.src = objectUrl
-  })
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -703,25 +432,38 @@ function ChatComposerComponent({
     (s) => s.setMobileComposerFocused,
   )
   const [value, setValue] = useState('')
-  const [attachments, setAttachments] = useState<Array<ChatComposerAttachment>>(
-    [],
-  )
-  const [attachmentProcessingCount, setAttachmentProcessingCount] = useState(0)
-  const [isDraggingOver, setIsDraggingOver] = useState(false)
-  const [previewImage, setPreviewImage] = useState<{ url: string; name: string } | null>(null)
+  const focusPromptRef = useRef<(() => void) | null>(null)
+  const composerAttachments = useComposerAttachments({ disabled, focusPromptRef })
+  const {
+    attachments,
+    setAttachments,
+    attachmentProcessingCount,
+    isDraggingOver,
+    previewImage,
+    setPreviewImage,
+    attachmentInputRef,
+    addAttachments,
+    handleRemoveAttachment,
+    handlePaste,
+    handleDragEnter,
+    handleDragLeave,
+    handleDragOver,
+    handleDrop,
+    resetDragState,
+  } = composerAttachments
   const [focusAfterSubmitTick, setFocusAfterSubmitTick] = useState(0)
   const { settings: composerSettings } = useSettings()
-  const chatNavMode = composerSettings.mobileChatNavMode ?? 'dock'
+  const chatNavMode = composerSettings.mobileChatNavMode
   const [isMobileViewport, setIsMobileViewport] = useState(() => {
     if (typeof window === 'undefined') return false
     return window.matchMedia('(max-width: 767px)').matches
   })
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
-  const [isProviderSwitcherExpanded, setIsProviderSwitcherExpanded] = useState(false)
+  const [, setIsProviderSwitcherExpanded] = useState(false)
   const [isMobileActionsMenuOpen, setIsMobileActionsMenuOpen] = useState(false)
   const [isWebSearchMode, _setIsWebSearchMode] = useState(false)
   const [isSlashMenuDismissed, setIsSlashMenuDismissed] = useState(false)
-  const [modelNotice, setModelNotice] = useState<ModelSwitchNotice | null>(null)
+  const [, setModelNotice] = useState<ModelSwitchNotice | null>(null)
   const [fastMode, setFastMode] = useState(false)
   // Per-session thinking level — controlled externally (chat-screen owns the state)
   // Falls back to internal state if no external controller provided
@@ -739,8 +481,6 @@ function ChatComposerComponent({
   void _handleThinkingToggle
   const promptRef = useRef<HTMLTextAreaElement | null>(null)
   const slashMenuRef = useRef<SlashCommandMenuHandle | null>(null)
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null)
-  const dragCounterRef = useRef(0)
   const shouldRefocusAfterSendRef = useRef(false)
   const submittingRef = useRef(false)
   const pendingSubmitAfterAttachmentsRef = useRef(false)
@@ -756,35 +496,6 @@ function ChatComposerComponent({
     queryFn: fetchModels,
     refetchInterval: 60_000,
     retry: false,
-  })
-  const currentProvider = modelsQuery.data?.currentProvider ?? ''
-  const otherProviders = useMemo(
-    () =>
-      (modelsQuery.data?.providers ?? []).filter(
-        (provider) => provider.id !== currentProvider,
-      ),
-    [currentProvider, modelsQuery.data?.providers],
-  )
-  const otherProviderModelsQuery = useQuery({
-    queryKey: ['hermes', 'models', 'other-providers', otherProviders.map((provider) => provider.id).sort().join('|')],
-    enabled: isProviderSwitcherExpanded && otherProviders.length > 0,
-    retry: false,
-    queryFn: async () => {
-      const modelEntries = await Promise.all(
-        otherProviders.map(async (provider) => ({
-          providerId: provider.id,
-          models: await fetchModelsForProvider(provider.id),
-        })),
-      )
-
-      return modelEntries.reduce<Record<string, Array<ModelCatalogEntry>>>(
-        (acc, entry) => {
-          acc[entry.providerId] = entry.models
-          return acc
-        },
-        {},
-      )
-    },
   })
   const currentModelQuery = useQuery({
     queryKey: ['hermes', 'session-status-model'],
@@ -841,37 +552,6 @@ function ChatComposerComponent({
     },
   })
 
-
-
-  const handleModelSelect = useCallback(
-    function handleModelSelect(nextModel: string, provider?: string) {
-      const model = nextModel.trim()
-      if (!model) return
-      const normalizedSessionKey =
-        typeof sessionKey === 'string' && sessionKey.trim().length > 0
-          ? sessionKey.trim()
-          : undefined
-      setModelNotice(null)
-      setCurrentSelectedModel(getResolvedModelKey(model, provider))
-      modelSwitchMutation.mutate({
-        model,
-        provider,
-        sessionKey: normalizedSessionKey,
-      })
-    },
-    [modelSwitchMutation, sessionKey],
-  )
-
-  const retryModel = modelNotice?.retryModel ?? ''
-  const retryProvider = modelNotice?.retryProvider
-  const handleRetryModelSwitch = useCallback(
-    function handleRetryModelSwitch() {
-      if (!retryModel) return
-      handleModelSelect(retryModel, retryProvider)
-    },
-    [handleModelSelect, retryModel, retryProvider],
-  )
-
   const currentModel = currentModelQuery.data ?? ''
 
   // Auto-switch to hermes-agent model on mount (Hermes Workspace always uses Hermes)
@@ -899,7 +579,7 @@ function ChatComposerComponent({
     () => toDraftStorageKey(sessionKey),
     [sessionKey],
   )
-  const [currentSelectedModel, setCurrentSelectedModel] = useState<string | null>(null)
+  const [currentSelectedModel] = useState<string | null>(null)
   // On new chat, currentModel is empty until a session is created.
   // Read the runtime model from the models query (first item is from the current provider).
   const configuredModel = useMemo(() => {
@@ -956,6 +636,7 @@ function ChatComposerComponent({
     },
     [cancelFocusPromptFrame],
   )
+  focusPromptRef.current = focusPrompt
 
   useEffect(
     function cleanupFocusPromptFrameOnUnmount() {
@@ -974,11 +655,6 @@ function ChatComposerComponent({
     },
     [setMobileComposerFocused],
   )
-
-  const resetDragState = useCallback(() => {
-    dragCounterRef.current = 0
-    setIsDraggingOver(false)
-  }, [])
 
   useLayoutEffect(() => {
     if (isMobileViewport) return
@@ -1108,180 +784,6 @@ function ChatComposerComponent({
     composerRef,
     () => ({ setValue: setComposerValue, insertText }),
     [insertText, setComposerValue],
-  )
-
-  const handleRemoveAttachment = useCallback((id: string) => {
-    setAttachments((prev) => prev.filter((attachment) => attachment.id !== id))
-  }, [])
-
-  const addAttachments = useCallback(
-    async (files: Array<File>) => {
-      if (disabled) return
-      setAttachmentProcessingCount((n) => n + 1)
-
-      const timestamp = Date.now()
-      const prepared = await Promise.all(
-        files.map(async (file, index): Promise<ChatComposerAttachment | null> => {
-          const imageFile = isImageFile(file)
-          const textFile = isTextFile(file)
-          if (!imageFile && !textFile && file.type.trim().length > 0) {
-            return null
-          }
-
-          if (file.size > MAX_ATTACHMENT_FILE_SIZE) {
-            toast(
-              `“${file.name || 'file'}” is ${formatFileSize(file.size)}. Max upload input size is ${formatFileSize(MAX_ATTACHMENT_FILE_SIZE)}.`,
-              { type: 'warning' },
-            )
-            return null
-          }
-
-          if (textFile) {
-            const textContent = await readFileAsText(file)
-            if (textContent === null) return null
-            const name =
-              file.name && file.name.trim().length > 0
-                ? file.name.trim()
-                : `pasted-text-${timestamp}-${index + 1}.txt`
-            const textBytes = new TextEncoder().encode(textContent).length
-            return {
-              id: crypto.randomUUID(),
-              name,
-              contentType:
-                (isTextMimeType(file.type) ? normalizeMimeType(file.type) : '') ||
-                inferTextMimeTypeFromFileName(name) ||
-                'text/plain',
-              size: textBytes,
-              dataUrl: textContent,
-              kind: 'file',
-            }
-          }
-
-          const compressedDataUrl = await compressImageToDataUrl(file).catch(() => null)
-          const dataUrl = compressedDataUrl || (await readFileAsDataUrl(file))
-          if (!dataUrl) return null
-
-          const dataUrlMimeType = readDataUrlMimeType(dataUrl)
-          if (!isImageMimeType(dataUrlMimeType || '')) {
-            return null
-          }
-
-          const transportBytes = estimateDataUrlBytes(dataUrl)
-          if (transportBytes > MAX_TRANSPORT_IMAGE_SIZE) {
-            toast(
-              `Image compressed to ${(transportBytes / (1024 * 1024)).toFixed(2)}mb — still over the 1mb limit. Try a smaller screenshot.`,
-              { type: 'warning' },
-            )
-            return null
-          }
-
-          const name =
-            file.name && file.name.trim().length > 0
-              ? file.name.trim()
-              : `pasted-image-${timestamp}-${index + 1}.jpg`
-          const detectedMimeType =
-            dataUrlMimeType ||
-            (isImageMimeType(file.type) ? normalizeMimeType(file.type) : '') ||
-            inferImageMimeTypeFromFileName(name) ||
-            'image/jpeg'
-          return {
-            id: crypto.randomUUID(),
-            name,
-            contentType: detectedMimeType,
-            size: transportBytes,
-            dataUrl,
-            previewUrl: dataUrl,
-            kind: 'image',
-          }
-        }),
-      )
-
-      const valid = prepared.filter(
-        (attachment): attachment is ChatComposerAttachment => attachment !== null,
-      )
-
-      const skippedCount = prepared.length - valid.length
-      if (skippedCount > 0) {
-        toast(
-          skippedCount === 1
-            ? '1 file could not be attached.'
-            : `${skippedCount} files could not be attached.`,
-          { type: 'warning' },
-        )
-      }
-
-      if (valid.length === 0) {
-        setAttachmentProcessingCount((n) => Math.max(0, n - 1))
-        return
-      }
-
-      setAttachments((prev) => [...prev, ...valid])
-      setAttachmentProcessingCount((n) => Math.max(0, n - 1))
-      focusPrompt()
-    },
-    [disabled, focusPrompt],
-  )
-
-  const handlePaste = useCallback(
-    (event: React.ClipboardEvent<HTMLDivElement>) => {
-      if (disabled) return
-      const files = collectFilesFromDataTransfer(event.clipboardData)
-      if (files.length === 0) return
-
-      const text = event.clipboardData.getData('text/plain')
-      if (text.trim().length === 0) {
-        event.preventDefault()
-      }
-      void addAttachments(files)
-    },
-    [addAttachments, disabled],
-  )
-
-  const handleDragEnter = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (disabled) return
-      if (!hasAttachableData(event.dataTransfer)) return
-      event.preventDefault()
-      dragCounterRef.current += 1
-      setIsDraggingOver(true)
-      event.dataTransfer.dropEffect = 'copy'
-    },
-    [disabled],
-  )
-
-  const handleDragLeave = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (disabled) return
-      if (event.currentTarget.contains(event.relatedTarget as Node)) return
-      dragCounterRef.current = Math.max(0, dragCounterRef.current - 1)
-      if (dragCounterRef.current === 0) {
-        setIsDraggingOver(false)
-      }
-    },
-    [disabled],
-  )
-
-  const handleDragOver = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (disabled) return
-      event.preventDefault()
-      if (hasAttachableData(event.dataTransfer)) {
-        event.dataTransfer.dropEffect = 'copy'
-      }
-    },
-    [disabled],
-  )
-
-  const handleDrop = useCallback(
-    (event: React.DragEvent<HTMLDivElement>) => {
-      if (disabled) return
-      event.preventDefault()
-      const files = collectFilesFromDataTransfer(event.dataTransfer)
-      resetDragState()
-      if (files.length === 0) return
-      void addAttachments(files)
-    },
-    [addAttachments, disabled, resetDragState],
   )
 
   const handleSubmit = useCallback(() => {

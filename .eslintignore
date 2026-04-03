@@ -1,5 +1,7 @@
 eslint.config.js
 prettier.config.js
 vite.config.ts
+e2e/
+playwright.config.ts
 
 

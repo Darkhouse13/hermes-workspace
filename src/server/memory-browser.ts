@@ -1,6 +1,9 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createLogger } from './logger'
+
+const log = createLogger('memory-browser')
 
 export type MemoryFileMeta = {
   path: string
@@ -79,7 +82,8 @@ function walkWorkspaceDir(entries: Array<MemoryFileMeta>, workspaceRoot: string,
   let dirEntries: Array<string>
   try {
     dirEntries = fs.readdirSync(dirPath)
-  } catch {
+  } catch (err) {
+    log.warn('Failed to read directory', { dir: dirPath, error: String(err) })
     return
   }
 

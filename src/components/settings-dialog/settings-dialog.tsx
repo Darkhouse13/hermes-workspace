@@ -4,7 +4,6 @@ import { HugeiconsIcon } from '@hugeicons/react'
 import {
   ArrowLeft01Icon,
   Cancel01Icon,
-  CheckmarkCircle02Icon,
   CloudIcon,
   ComputerIcon,
   MessageMultiple01Icon,
@@ -15,9 +14,7 @@ import {
 } from '@hugeicons/core-free-icons'
 import { Component, useCallback, useEffect, useState } from 'react'
 import type * as React from 'react'
-import type { AccentColor, SettingsThemeMode } from '@/hooks/use-settings'
-import type { LoaderStyle } from '@/hooks/use-chat-settings'
-import type { BrailleSpinnerPreset } from '@/components/ui/braille-spinner'
+import type { SettingsThemeMode } from '@/hooks/use-settings'
 import type {ThemeId} from '@/lib/theme';
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -32,16 +29,9 @@ import {
 } from '@/lib/theme'
 import { cn } from '@/lib/utils'
 import {
-  getChatProfileDisplayName,
   useChatSettingsStore,
 } from '@/hooks/use-chat-settings'
-import { UserAvatar } from '@/components/avatars'
-import { Input } from '@/components/ui/input'
-import { LogoLoader } from '@/components/logo-loader'
-import { BrailleSpinner } from '@/components/ui/braille-spinner'
-import { ThreeDotsSpinner } from '@/components/ui/three-dots-spinner'
 import BackendUnavailableState from '@/components/backend-unavailable-state'
-import { applyAccentColor } from '@/lib/accent-colors'
 import { getUnavailableReason, isFeatureAvailable } from '@/lib/feature-gates'
 import { ProviderLogo } from '@/components/provider-logo'
 import {
@@ -180,7 +170,7 @@ function HermesContent() {
         setActiveProvider(d.activeProvider || '')
         setActiveModel(d.activeModel || '')
         if (d.activeProvider) fetchModelsForProvider(d.activeProvider)
-        const mem = (d.config?.memory as Record<string, unknown>) || {}
+        const mem = (d.config?.memory as Record<string, unknown> | undefined) ?? {}
         setMemEnabled(mem.memory_enabled !== false)
         setUserProfileEnabled(mem.user_profile_enabled !== false)
         // Build configured keys map
@@ -395,142 +385,6 @@ function HermesContent() {
   )
 }
 
-function _ProfileContent() {
-  const { settings: cs, updateSettings: updateCS } = useChatSettingsStore()
-  const [profileError, setProfileError] = useState<string | null>(null)
-  const [processing, setProcessing] = useState(false)
-  const displayName = getChatProfileDisplayName(cs.displayName)
-  const [nameError, setNameError] = useState<string | null>(null)
-
-  function handleNameChange(value: string) {
-    if (value.length > 50) {
-      setNameError('Display name too long (max 50 characters)')
-      return
-    }
-    setNameError(null)
-    updateCS({ displayName: value })
-  }
-
-  async function handleAvatarUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    e.target.value = ''
-    if (!file) return
-    if (!file.type.startsWith('image/')) {
-      setProfileError('Unsupported file type.')
-      return
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setProfileError('Image too large (max 10MB).')
-      return
-    }
-    setProfileError(null)
-    setProcessing(true)
-    try {
-      const url = URL.createObjectURL(file)
-      const img = await new Promise<HTMLImageElement>((resolve, reject) => {
-        const i = new Image()
-        i.onload = () => resolve(i)
-        i.onerror = () => reject(new Error('Failed'))
-        i.src = url
-      })
-      const max = 128,
-        scale = Math.min(1, max / Math.max(img.width, img.height))
-      const w = Math.round(img.width * scale),
-        h = Math.round(img.height * scale)
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d')!
-      ctx.imageSmoothingQuality = 'high'
-      ctx.drawImage(img, 0, 0, w, h)
-      URL.revokeObjectURL(url)
-      updateCS({
-        avatarDataUrl: canvas.toDataURL(
-          file.type === 'image/png' ? 'image/png' : 'image/jpeg',
-          0.82,
-        ),
-      })
-    } catch {
-      setProfileError('Failed to process image.')
-    } finally {
-      setProcessing(false)
-    }
-  }
-
-  const errorId = 'profile-name-error'
-
-  return (
-    <div className="space-y-4">
-      <SectionHeader
-        title="Profile"
-        description="Your display identity in chat."
-      />
-      <div className={SETTINGS_CARD_CLASS}>
-        <div className="flex items-center gap-3">
-          <UserAvatar size={44} src={cs.avatarDataUrl} alt={displayName} />
-          <div>
-            <p className="text-sm font-medium text-primary-900 dark:text-neutral-100">
-              {displayName}
-            </p>
-            <p className="text-xs text-primary-500 dark:text-neutral-400">
-              No email connected
-            </p>
-          </div>
-        </div>
-      </div>
-      <div className={SETTINGS_CARD_CLASS}>
-        <Row label="Display name" description="Shown in chat and sidebar">
-          <div className="w-full max-w-xs">
-            <Input
-              value={cs.displayName}
-              onChange={(e) => handleNameChange(e.target.value)}
-              placeholder="User"
-              className="h-8 w-full rounded-lg border-primary-200 text-sm"
-              maxLength={50}
-              aria-label="Display name"
-              aria-invalid={!!nameError}
-              aria-describedby={nameError ? errorId : undefined}
-            />
-            {nameError && (
-              <p id={errorId} className="mt-1 text-xs text-red-600" role="alert">
-                {nameError}
-              </p>
-            )}
-          </div>
-        </Row>
-        <Row label="Avatar">
-          <div className="flex items-center gap-2">
-            <label className="block">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={handleAvatarUpload}
-                disabled={processing}
-                aria-label="Upload profile picture"
-                className="block max-w-[13rem] cursor-pointer text-xs text-primary-700 dark:text-neutral-300 file:mr-2 file:cursor-pointer file:rounded-lg file:border file:border-primary-200 file:bg-primary-100 file:px-2.5 file:py-1.5 file:text-xs file:font-medium file:text-primary-900 file:transition-colors hover:file:bg-primary-200 disabled:cursor-not-allowed disabled:opacity-50"
-              />
-            </label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => updateCS({ avatarDataUrl: null })}
-              disabled={!cs.avatarDataUrl || processing}
-              className="h-8 rounded-lg border-primary-200 px-3"
-            >
-              Remove
-            </Button>
-          </div>
-          {profileError && (
-            <p className="text-xs text-red-600" role="alert">
-              {profileError}
-            </p>
-          )}
-        </Row>
-      </div>
-    </div>
-  )
-}
-
 function AppearanceContent() {
   const { settings, updateSettings } = useSettings()
 
@@ -541,20 +395,6 @@ function AppearanceContent() {
       setTheme(getThemeVariant(getTheme(), theme))
     }
     updateSettings({ theme })
-  }
-
-  function _badgeClass(color: AccentColor): string {
-    if (color === 'orange') return 'bg-orange-500'
-    if (color === 'purple') return 'bg-purple-500'
-    if (color === 'blue') return 'bg-blue-500'
-    return 'bg-green-500'
-  }
-
-  function _handleAccentColorChange(selectedAccent: AccentColor) {
-    localStorage.setItem('hermes-accent', selectedAccent)
-    document.documentElement.setAttribute('data-accent', selectedAccent)
-    applyAccentColor(selectedAccent)
-    updateSettings({ accentColor: selectedAccent })
   }
 
   return (
@@ -753,75 +593,6 @@ function EnterpriseThemePicker() {
   )
 }
 
-function _LoaderContent() {
-  const { settings: cs, updateSettings: updateCS } = useChatSettingsStore()
-  const styles: Array<{ value: LoaderStyle; label: string }> = [
-    { value: 'dots', label: 'Dots' },
-    { value: 'braille-hermes', label: 'Hermes' },
-    { value: 'braille-orbit', label: 'Orbit' },
-    { value: 'braille-breathe', label: 'Breathe' },
-    { value: 'braille-pulse', label: 'Pulse' },
-    { value: 'braille-wave', label: 'Wave' },
-    { value: 'lobster', label: 'Lobster' },
-    { value: 'logo', label: 'Logo' },
-  ]
-  function getPreset(s: LoaderStyle): BrailleSpinnerPreset | null {
-    const m: Record<string, BrailleSpinnerPreset> = {
-      'braille-hermes': 'hermes',
-      'braille-orbit': 'orbit',
-      'braille-breathe': 'breathe',
-      'braille-pulse': 'pulse',
-      'braille-wave': 'wave',
-    }
-    return m[s] ?? null
-  }
-  function Preview({ style }: { style: LoaderStyle }) {
-    if (style === 'dots') return <ThreeDotsSpinner />
-    if (style === 'lobster')
-      return <span className="inline-block text-sm animate-pulse">🦞</span>
-    if (style === 'logo') return <LogoLoader />
-    const p = getPreset(style)
-    return p ? (
-      <BrailleSpinner
-        preset={p}
-        size={16}
-        speed={120}
-        className="text-primary-500"
-      />
-    ) : (
-      <ThreeDotsSpinner />
-    )
-  }
-  return (
-    <div>
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-primary-500">
-        Loading animation
-      </p>
-      <div className="grid grid-cols-4 gap-2">
-        {styles.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            onClick={() => updateCS({ loaderStyle: o.value })}
-            className={cn(
-              'flex min-h-14 flex-col items-center justify-center gap-1.5 rounded-lg border px-1.5 py-1.5 transition-colors',
-              cs.loaderStyle === o.value
-                ? 'border-accent-500 bg-accent-50 text-accent-700'
-                : 'border-primary-200 bg-primary-50/80 text-primary-700 hover:bg-primary-100',
-            )}
-            aria-pressed={cs.loaderStyle === o.value}
-          >
-            <span className="flex h-4 items-center justify-center">
-              <Preview style={o.value} />
-            </span>
-            <span className="text-[10px] font-medium leading-3">{o.label}</span>
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 function ChatContent() {
   const { settings: cs, updateSettings: updateCS } = useChatSettingsStore()
   return (
@@ -894,112 +665,6 @@ function NotificationsContent() {
               {settings.usageThreshold}%
             </span>
           </div>
-        </Row>
-      </div>
-    </div>
-  )
-}
-
-function _AdvancedContent() {
-  const { settings, updateSettings } = useSettings()
-  const [connectionStatus, setConnectionStatus] = useState<
-    'idle' | 'testing' | 'connected' | 'failed'
-  >('idle')
-  const [urlError, setUrlError] = useState<string | null>(null)
-
-  function validateAndUpdateUrl(value: string) {
-    if (value && value.length > 0) {
-      try {
-        new URL(value)
-        setUrlError(null)
-      } catch {
-        setUrlError('Invalid URL format')
-      }
-    } else {
-      setUrlError(null)
-    }
-    updateSettings({ hermesUrl: value })
-  }
-
-  async function testConnection() {
-    if (urlError) return
-    setConnectionStatus('testing')
-    try {
-      const r = await fetch('/api/ping')
-      setConnectionStatus(r.ok ? 'connected' : 'failed')
-    } catch {
-      setConnectionStatus('failed')
-    }
-  }
-
-  const urlErrorId = 'hermes-url-error'
-
-  return (
-    <div className="space-y-4">
-      <SectionHeader
-        title="Advanced"
-        description="Hermes endpoint and connectivity."
-      />
-      <div className={SETTINGS_CARD_CLASS}>
-        <Row label="Hermes URL" description="Used for API requests from Studio">
-          <div className="w-full max-w-sm">
-            <Input
-              type="url"
-              placeholder="https://api.hermesworkspace.app"
-              value={settings.hermesUrl}
-              onChange={(e) => validateAndUpdateUrl(e.target.value)}
-              className="h-8 w-full rounded-lg border-primary-200 text-sm"
-              aria-label="Hermes URL"
-              aria-invalid={!!urlError}
-              aria-describedby={urlError ? urlErrorId : undefined}
-            />
-            {urlError && (
-              <p
-                id={urlErrorId}
-                className="mt-1 text-xs text-red-600"
-                role="alert"
-              >
-                {urlError}
-              </p>
-            )}
-          </div>
-        </Row>
-        <Row label="Connection status">
-          <span
-            className={cn(
-              'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium',
-              connectionStatus === 'connected' &&
-                'border-green-500/35 bg-green-500/10 text-green-600',
-              connectionStatus === 'failed' &&
-                'border-red-500/35 bg-red-500/10 text-red-600',
-              connectionStatus === 'testing' &&
-                'border-accent-500/35 bg-accent-500/10 text-accent-600',
-              connectionStatus === 'idle' &&
-                'border-primary-300 bg-primary-100 text-primary-700',
-            )}
-          >
-            {connectionStatus === 'idle'
-              ? 'Not tested'
-              : connectionStatus === 'testing'
-                ? 'Testing...'
-                : connectionStatus === 'connected'
-                  ? 'Connected'
-                  : 'Failed'}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => void testConnection()}
-            disabled={connectionStatus === 'testing' || !!urlError}
-            className="h-8 rounded-lg border-primary-200 px-3"
-          >
-            <HugeiconsIcon
-              icon={CheckmarkCircle02Icon}
-              size={16}
-              strokeWidth={1.5}
-            />
-            Test
-          </Button>
         </Row>
       </div>
     </div>

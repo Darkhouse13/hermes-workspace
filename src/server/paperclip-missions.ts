@@ -1,11 +1,14 @@
 import fs from 'node:fs/promises'
+import { createLogger } from './logger'
 import type { MissionStatus, PaperclipMission, PaperclipMissionFilters } from '@/types/paperclip'
+
+const log = createLogger('paperclip-missions')
 import { getPaperclipMissionsDir, getPaperclipMissionPath } from '@/server/paperclip-paths'
 import { makePaperclipId, nowIso, readJsonOrDefault, writeJsonPretty } from '@/server/paperclip-store'
 import { appendProjectEvent } from '@/server/paperclip-continuity'
 import { getProject, updateProject } from '@/server/paperclip-projects'
 
-const ALLOWED_TRANSITIONS: Record<MissionStatus, Array<MissionStatus>> = {
+export const ALLOWED_TRANSITIONS: Record<MissionStatus, Array<MissionStatus>> = {
   queued: ['in_progress', 'cancelled'],
   in_progress: ['blocked', 'awaiting_handoff', 'awaiting_approval', 'completed', 'cancelled'],
   blocked: ['queued', 'cancelled', 'awaiting_approval'],
@@ -25,7 +28,8 @@ async function readMissionFiles(projectSlug: string): Promise<Array<PaperclipMis
         .map((entry) => readJsonOrDefault<PaperclipMission | null>(`${dir}/${entry}`, null)),
     )
     return missions.filter(Boolean) as Array<PaperclipMission>
-  } catch {
+  } catch (err) {
+    log.warn('Failed to read mission files', { dir, error: String(err) })
     return []
   }
 }

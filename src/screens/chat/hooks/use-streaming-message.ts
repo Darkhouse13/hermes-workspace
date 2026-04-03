@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ChatAttachment, ChatMessage } from '../types'
+import type { ChatAttachment, ChatMessage, StreamToolCall } from '../types'
 import { useChatStore } from '@/stores/chat-store'
 import { pushActivity } from '@/components/inspector/activity-store'
 
@@ -442,7 +442,7 @@ export function useStreamingMessage(options: UseStreamingMessageOptions = {}) {
           processStoreEvent({
             type: 'tool',
             phase:
-              typeof payload.phase === 'string' ? payload.phase : 'calling',
+              typeof payload.phase === 'string' ? payload.phase as StreamToolCall['phase'] : 'calling',
             name: typeof payload.name === 'string' ? payload.name : 'tool',
             toolCallId:
               typeof payload.toolCallId === 'string'
@@ -686,10 +686,7 @@ export function useStreamingMessage(options: UseStreamingMessageOptions = {}) {
           }
         }
 
-        const lifecyclePhase = lifecyclePhaseRef.current as StreamLifecyclePhase
-        if (!finishedRef.current && lifecyclePhase !== 'handoff') {
-          finishStream()
-        }
+        finishStream()
       } catch (err) {
         if ((err as Error).name === 'AbortError') return
         const errorMessage = err instanceof Error ? err.message : String(err)

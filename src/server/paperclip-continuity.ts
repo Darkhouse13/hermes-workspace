@@ -1,6 +1,9 @@
 
 import fs from 'node:fs/promises'
+import { createLogger } from './logger'
 import type { PaperclipEvent, PaperclipEventType, PaperclipSessionLink } from '@/types/paperclip'
+
+const log = createLogger('paperclip-continuity')
 import {
   getPaperclipProjectDir,
   getPaperclipProjectSessionLinkPath,
@@ -57,7 +60,8 @@ export async function listProjectSessionLinks(projectIdOrSlug: string): Promise<
     return (items.filter(Boolean) as Array<PaperclipSessionLink>).sort(
       (a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt),
     )
-  } catch {
+  } catch (err) {
+    log.warn('Failed to list project session links', { dir, error: String(err) })
     return []
   }
 }

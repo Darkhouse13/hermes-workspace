@@ -1,11 +1,25 @@
 import { create } from 'zustand'
 import type {
   ChatMessage,
-  MessageContent,
-  TextContent,
-  ThinkingContent,
-  ToolCallContent,
+  StreamToolCall,
 } from '../screens/chat/types'
+import { stripFinalTags } from '../lib/chat-content-normalization'
+import {
+  getMessageEventTime,
+} from '../lib/chat-message-identity'
+import {
+  sortMessagesChronologically,
+  isExternalInboundUserSource,
+  extractMessageText,
+  findOptimisticIndex,
+  findDuplicateIndex,
+  mergeOptimisticMessage,
+  hasRecentExternalDuplicate,
+  findDoneEventDuplicateIndex,
+  matchesRealtimeMessage,
+  mergeRealtimeAssistantMetadata,
+} from '../lib/chat-message-dedup'
+import { finalizeStreamingMessage } from '../lib/chat-streaming-assembly'
 
 let _streamingPersistTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -34,10 +48,11 @@ export type ChatStreamEvent =
     }
   | {
       type: 'tool'
-      phase: string
+      phase: StreamToolCall['phase']
       name: string
       toolCallId?: string
       args?: unknown
+      result?: string
       runId?: string
       sessionKey: string
       transport?: 'chat-events' | 'send-stream'
@@ -83,13 +98,7 @@ export type StreamingState = {
     timestamp: number
     isError: boolean
   }>
-  toolCalls: Array<{
-    id: string
-    name: string
-    phase: string
-    args?: unknown
-    result?: string
-  }>
+  toolCalls: StreamToolCall[]
 }
 
 type ChatState = {
@@ -177,56 +186,6 @@ export function restoreStreamingState(sessionKey: string): StreamingState | null
 
 let realtimeMessageSequence = 0
 
-function normalizeString(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
-
-/**
- * Strip <final>...</final> wrapper tags that the server emits as a
- * streaming-completion sentinel in agent chunk events.
- *
- * The server sometimes wraps the last streaming chunk (or a standalone
- * assistant-message event that fires before the formal `state: 'final'` chat
- * event) in <final>…</final> tags.  When the subsequent clean `done` event
- * arrives, the dedup logic compares its text against the already-stored tagged
- * version — they don't match — so BOTH messages end up in realtimeMessages and
- * appear side-by-side in the UI.
- *
- * Stripping these tags at the store boundary (before storing or comparing)
- * ensures the two copies are treated as the same message regardless of whether
- * the server included the sentinel tags or not.
- */
-function stripFinalTags(text: string): string {
-  // <final>…</final>  — strip outer wrapper (case-insensitive, allows whitespace)
-  let result = text.replace(/^\s*<final>\s*([\s\S]*?)\s*<\/final>\s*$/i, '$1').trim()
-  // P7: strip internal model tags that should never appear in rendered output.
-  // Matches chat UI's rg/ig/ag stripping functions.
-  // Respects code blocks — only strip tags outside of ``` fences.
-  result = stripInternalTags(result)
-  return result
-}
-
-/**
- * Strip internal model tags (<thinking>, <antThinking>, <thought>,
- * <parameter name="newText">, <relevant_memories>) that can leak into
- * displayed text. Only strips outside code blocks to avoid breaking code samples.
- * Mirrors the chat control UI's tag-stripping pipeline.
- */
-function stripInternalTags(text: string): string {
-  // Split on code blocks to avoid stripping inside them
-  const parts = text.split(/(```[\s\S]*?```)/g)
-  return parts.map((part, i) => {
-    if (i % 2 === 1) return part // inside code block — leave untouched
-    return part
-      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-      .replace(/<antThinking>[\s\S]*?<\/antThinking>/gi, '')
-      .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
-      .replace(/<parameter name="newText">[\s\S]*?<\/antml:parameter>/gi, '')
-      .replace(/<relevant_memories>[\s\S]*?<\/relevant_memories>/gi, '')
-      .trim()
-  }).join('')
-}
-
 const LIFECYCLE_PREFIX_EMOJIS = ['⏳', '⚠️', '🔄', '🗜️', '❌'] as const
 
 function parseLifecycleEvent(text: string, timestamp: number): {
@@ -270,7 +229,7 @@ function stripFinalTagsFromMessage(msg: ChatMessage): ChatMessage {
   if (Array.isArray(msg.content)) {
     const nextContent = msg.content.map((part) => {
       if (part.type !== 'text') return part
-      const raw = (part as any).text ?? ''
+      const raw = part.text ?? ''
       const stripped = stripFinalTags(typeof raw === 'string' ? raw : String(raw))
       if (stripped === raw) return part
       modified = true
@@ -292,189 +251,6 @@ function stripFinalTagsFromMessage(msg: ChatMessage): ChatMessage {
   return nextMessage
 }
 
-function getMessageId(msg: ChatMessage | null | undefined): string | undefined {
-  if (!msg) return undefined
-  const id = (msg as { id?: string }).id
-  if (typeof id === 'string' && id.trim().length > 0) return id
-  const messageId = (msg as { messageId?: string }).messageId
-  if (typeof messageId === 'string' && messageId.trim().length > 0) return messageId
-  return undefined
-}
-
-function getClientNonce(msg: ChatMessage | null | undefined): string {
-  if (!msg) return ''
-  const raw = msg as Record<string, unknown>
-  return (
-    normalizeString(raw.clientId) ||
-    normalizeString(raw.client_id) ||
-    normalizeString(raw.nonce) ||
-    normalizeString(raw.idempotencyKey)
-  )
-}
-
-function getMessageEventTime(msg: ChatMessage | null | undefined): number | undefined {
-  if (!msg) return undefined
-  const raw = msg as Record<string, unknown>
-  for (const key of ['createdAt', 'timestamp'] as const) {
-    const value = raw[key]
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-    if (typeof value === 'string' && value.trim().length > 0) {
-      const parsed = Date.parse(value)
-      if (Number.isFinite(parsed)) return parsed
-    }
-  }
-  return undefined
-}
-
-function getMessageReceiveTime(msg: ChatMessage | null | undefined): number | undefined {
-  if (!msg) return undefined
-  const value = (msg as Record<string, unknown>).__receiveTime
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
-
-function getMessageHistoryIndex(msg: ChatMessage | null | undefined): number | undefined {
-  if (!msg) return undefined
-  const value = (msg as Record<string, unknown>).__historyIndex
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
-
-function getMessageRealtimeSequence(
-  msg: ChatMessage | null | undefined,
-): number | undefined {
-  if (!msg) return undefined
-  const value = (msg as Record<string, unknown>).__realtimeSequence
-  return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
-
-function hasToolCalls(msg: ChatMessage | null | undefined): boolean {
-  if (!msg) return false
-  if (Array.isArray(msg.content)) {
-    const contentHasToolCalls = msg.content.some((part) => part.type === 'toolCall')
-    if (contentHasToolCalls) return true
-  }
-
-  const raw = msg as Record<string, unknown>
-  return (
-    (Array.isArray(raw.streamToolCalls) && raw.streamToolCalls.length > 0) ||
-    (Array.isArray(raw.__streamToolCalls) && raw.__streamToolCalls.length > 0)
-  )
-}
-
-function getMessageChronologyRank(msg: ChatMessage): number {
-  const role = normalizeString(msg.role).toLowerCase()
-  if (role === 'user') return 0
-  if (role === 'assistant' && hasToolCalls(msg)) return 1
-  if (role === 'tool' || role === 'toolresult' || role === 'tool_result') return 2
-  if (role === 'assistant') return 3
-  return 4
-}
-
-function compareMessagesByTime(left: ChatMessage, right: ChatMessage): number {
-  const leftTime = getMessageEventTime(left) ?? getMessageReceiveTime(left) ?? 0
-  const rightTime = getMessageEventTime(right) ?? getMessageReceiveTime(right) ?? 0
-  if (leftTime !== rightTime) return leftTime - rightTime
-
-  const leftRank = getMessageChronologyRank(left)
-  const rightRank = getMessageChronologyRank(right)
-  if (leftRank !== rightRank) return leftRank - rightRank
-
-  const leftHistoryIndex = getMessageHistoryIndex(left)
-  const rightHistoryIndex = getMessageHistoryIndex(right)
-  if (
-    leftHistoryIndex !== undefined &&
-    rightHistoryIndex !== undefined &&
-    leftHistoryIndex !== rightHistoryIndex
-  ) {
-    return leftHistoryIndex - rightHistoryIndex
-  }
-
-  const leftRealtimeSequence = getMessageRealtimeSequence(left)
-  const rightRealtimeSequence = getMessageRealtimeSequence(right)
-  if (
-    leftRealtimeSequence !== undefined &&
-    rightRealtimeSequence !== undefined &&
-    leftRealtimeSequence !== rightRealtimeSequence
-  ) {
-    return leftRealtimeSequence - rightRealtimeSequence
-  }
-
-  const leftId = getMessageId(left) ?? ''
-  const rightId = getMessageId(right) ?? ''
-  return leftId.localeCompare(rightId)
-}
-
-function sortMessagesChronologically(
-  messages: Array<ChatMessage>,
-): Array<ChatMessage> {
-  return messages
-    .map((message, index) => ({ message, index }))
-    .sort((left, right) => {
-      const byTime = compareMessagesByTime(left.message, right.message)
-      if (byTime !== 0) return byTime
-      return left.index - right.index
-    })
-    .map(({ message }) => message)
-}
-
-function isExternalInboundUserSource(source: unknown): boolean {
-  const normalized = normalizeString(source).toLowerCase()
-  return normalized === 'webchat' || normalized === 'signal' || normalized === 'telegram'
-}
-
-function getAttachmentSignature(msg: ChatMessage | null | undefined): string {
-  if (!msg) return ''
-  const attachments = Array.isArray((msg as any).attachments)
-    ? ((msg as any).attachments as Array<Record<string, unknown>>)
-    : []
-  if (attachments.length === 0) return ''
-  return attachments
-    .map((attachment) => {
-      return `${normalizeString(attachment.name)}:${String(attachment.size ?? '')}`
-    })
-    .sort()
-    .join('|')
-}
-
-function isOptimisticUserCandidate(msg: ChatMessage | null | undefined): boolean {
-  if (!msg || msg.role !== 'user') return false
-  const raw = msg as Record<string, unknown>
-  return (
-    normalizeString(raw.__optimisticId).length > 0 ||
-    ['sending', 'queued', 'sent', 'done'].includes(normalizeString(raw.status))
-  )
-}
-
-function messageMultipartSignature(msg: ChatMessage | null | undefined): string {
-  if (!msg) return ''
-  let content = Array.isArray(msg.content)
-    ? msg.content
-        .map((part) => {
-          if (part.type === 'text') return `t:${String((part as any).text ?? '').trim()}`
-          if (part.type === 'thinking') return `h:${String((part as any).thinking ?? '').trim()}`
-          if (part.type === 'toolCall') return `tc:${String((part as any).id ?? '')}:${String((part as any).name ?? '')}`
-          return `p:${String((part as any).type ?? '')}`
-        })
-        .join('|')
-    : ''
-  // Fallback: if content array is empty/missing, check top-level text fields
-  // so that legacy-format messages still produce a meaningful signature.
-  if (!content) {
-    const raw = msg as Record<string, unknown>
-    for (const key of ['text', 'body', 'message']) {
-      const val = raw[key]
-      if (typeof val === 'string' && val.trim().length > 0) {
-        content = `t:${stripFinalTags(val.trim())}`
-        break
-      }
-    }
-  }
-  const attachments = Array.isArray((msg as any).attachments)
-    ? (msg as any).attachments
-        .map((attachment: any) => `${String(attachment?.name ?? '')}:${String(attachment?.size ?? '')}:${String(attachment?.contentType ?? '')}`)
-        .join('|')
-    : ''
-  return `${msg.role ?? 'unknown'}:${content}:${attachments}`
-}
 
 export const useChatStore = create<ChatState>((set, get) => ({
   connectionState: 'disconnected',
@@ -558,140 +334,35 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ? stripFinalTagsFromMessage(event.message)
             : event.message
 
-        const newId = getMessageId(normalizedMessage)
-        const newClientNonce = getClientNonce(normalizedMessage)
-        const newMultipartSignature = messageMultipartSignature(normalizedMessage)
+        const optimisticIndex = findOptimisticIndex(normalizedMessage, sessionMessages)
+        const duplicateIndex = findDuplicateIndex(normalizedMessage, sessionMessages)
 
-        const optimisticIndexByNonce =
-          newClientNonce.length > 0
-            ? sessionMessages.findIndex((existing) => {
-                if (existing.role !== normalizedMessage.role) return false
-                const existingNonce = getClientNonce(existing)
-                if (existingNonce.length === 0 || existingNonce !== newClientNonce) {
-                  return false
-                }
-                return (
-                  normalizeString((existing as any).status) === 'sending' ||
-                  Boolean((existing as any).__optimisticId)
-                )
-              })
-            : -1
-
-        const optimisticIndex =
-          optimisticIndexByNonce >= 0
-            ? optimisticIndexByNonce
-            : normalizedMessage.role === 'user'
-              ? sessionMessages.findIndex((existing) => {
-                  if (existing.role !== 'user') return false
-                  if (!isOptimisticUserCandidate(existing)) return false
-                  const existingText = extractMessageText(existing)
-                  const incomingText = extractMessageText(normalizedMessage)
-                  if (existingText && incomingText && existingText === incomingText) {
-                    return true
-                  }
-                  const existingAttachments = getAttachmentSignature(existing)
-                  const incomingAttachments = getAttachmentSignature(normalizedMessage)
-                  return (
-                    existingText.length === 0 &&
-                    incomingText.length === 0 &&
-                    existingAttachments.length > 0 &&
-                    existingAttachments === incomingAttachments
-                  )
-                })
-              : -1
-
-        // Plain-text extraction for content-based dedup (catches identical
-        // replies that arrive with different IDs from different channels).
-        const newPlainText = extractMessageText(normalizedMessage)
+        const eventSource = event.type === 'user_message' ? event.source : undefined
         const isExternalInboundUser =
-          normalizedMessage.role === 'user' && isExternalInboundUserSource((event as any).source)
+          normalizedMessage.role === 'user' && isExternalInboundUserSource(eventSource)
         const incomingEventTime =
           getMessageEventTime(normalizedMessage) ?? incomingReceiveTime
-
-        const duplicateIndex = sessionMessages.findIndex((existing) => {
-          if (existing.role !== normalizedMessage.role) return false
-          const existingId = getMessageId(existing)
-          if (newId && existingId && newId === existingId) return true
-
-          const existingNonce = getClientNonce(existing)
-          if (newClientNonce && existingNonce && newClientNonce === existingNonce) {
-            return true
-          }
-
-          if (
-            newMultipartSignature.length > 0 &&
-            newMultipartSignature === messageMultipartSignature(existing)
-          ) {
-            return true
-          }
-
-          // Content-text dedup: identical assistant text within the same
-          // session should never appear twice, even if message IDs differ
-          // (e.g. same reply routed from Telegram + Hermes Workspace).
-          if (
-            normalizedMessage.role === 'assistant' &&
-            newPlainText.length > 20 &&
-            newPlainText === extractMessageText(existing)
-          ) {
-            return true
-          }
-
-          return false
-        })
 
         // Mark user messages from external sources
         const incomingMessage: ChatMessage = {
           ...normalizedMessage,
-          __realtimeSource:
-            event.type === 'user_message' ? (event as any).source : undefined,
+          __realtimeSource: eventSource,
           __receiveTime: incomingReceiveTime,
           __realtimeSequence: realtimeMessageSequence++,
           status: undefined,
         }
 
         if (optimisticIndex >= 0) {
-          const optimisticMessage = sessionMessages[optimisticIndex]
-          const incomingText = extractMessageText(incomingMessage)
-          const optimisticText = extractMessageText(optimisticMessage)
-          const incomingHasAttachments =
-            Array.isArray((incomingMessage as any).attachments) &&
-            (incomingMessage as any).attachments.length > 0
-          const optimisticHasAttachments =
-            Array.isArray((optimisticMessage as any).attachments) &&
-            (optimisticMessage as any).attachments.length > 0
-
-          sessionMessages[optimisticIndex] = {
-            ...optimisticMessage,
-            ...incomingMessage,
-            content:
-              incomingText.length > 0 || !optimisticText.length
-                ? incomingMessage.content
-                : optimisticMessage.content,
-            attachments:
-              incomingHasAttachments || !optimisticHasAttachments
-                ? incomingMessage.attachments
-                : optimisticMessage.attachments,
-            __optimisticId: undefined,
-            status: undefined,
-          }
+          sessionMessages[optimisticIndex] = mergeOptimisticMessage(
+            sessionMessages[optimisticIndex],
+            incomingMessage,
+          )
           messages.set(sessionKey, sortMessagesChronologically(sessionMessages))
           set({ realtimeMessages: messages, lastEventAt: now })
           break
         }
 
-        const hasRecentExternalDuplicate =
-          isExternalInboundUser &&
-          newPlainText.length > 0 &&
-          sessionMessages.some((existing) => {
-            if (existing.role !== 'user') return false
-            if (extractMessageText(existing) !== newPlainText) return false
-            const existingEventTime =
-              getMessageEventTime(existing) ?? getMessageReceiveTime(existing)
-            if (existingEventTime === undefined) return false
-            return Math.abs(incomingEventTime - existingEventTime) <= 10_000
-          })
-
-        if (hasRecentExternalDuplicate) {
+        if (hasRecentExternalDuplicate(normalizedMessage, sessionMessages, isExternalInboundUser, incomingEventTime)) {
           break
         }
 
@@ -780,7 +451,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             ...nextToolCalls[existingToolIndex],
             phase: event.phase,
             args: event.args,
-            result: (event as any).result ?? nextToolCalls[existingToolIndex].result,
+            result: event.result ?? nextToolCalls[existingToolIndex].result,
           }
         } else {
           // Create entry for ANY phase (complete, error, skill.loaded, artifact.created, etc.)
@@ -790,7 +461,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             name: event.name,
             phase: event.phase,
             args: event.args,
-            result: (event as any).result,
+            result: event.result,
           })
         }
 
@@ -812,114 +483,38 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
         // DEBUG: trace done handler
         console.log('[chat-store:done] sessionKey=', sessionKey)
-        console.log('[chat-store:done] streaming=', streaming ? { text: streaming.text?.slice(0, 50), runId: streaming.runId } : null)
+        console.log('[chat-store:done] streaming=', streaming ? { text: streaming.text.slice(0, 50), runId: streaming.runId } : null)
         console.log('[chat-store:done] event.message=', event.message ? 'present' : 'missing')
         console.log('[chat-store:done] streamingMap keys=', [...streamingMap.keys()])
 
         // Build the complete message — prefer authoritative final payload (bug #8 fix)
-        let completeMessage: ChatMessage | null = null
-
-        if (event.message) {
-          // Prefer done event's message payload — it's the authoritative final response.
-          // Strip <final>…</final> sentinel tags: the `done` message may still carry
-          // them if the server serialises the final state from its streaming buffer.
-          const cleanedMessage = ensureAssistantTextContent(
-            stripFinalTagsFromMessage(event.message),
-          )
-          // Preserve tool calls from streaming state on the final message so
-          // ToolCallPill can render them even after streaming state is cleared.
-          // Fast tool runs clear streaming state before React renders — embedding
-          // __streamToolCalls ensures pills survive in the history message.
-          const streamToolCallsToEmbed = streaming?.toolCalls?.length
-            ? streaming.toolCalls
-            : undefined
-          completeMessage = {
-            ...cleanedMessage,
-            timestamp: getMessageEventTime(cleanedMessage) ?? now,
-            __receiveTime: now,
-            __realtimeSequence: realtimeMessageSequence++,
-            __streamingStatus: 'complete' as any,
-            ...(streamToolCallsToEmbed ? { __streamToolCalls: streamToolCallsToEmbed } : {}),
-          }
-        } else if (streaming && streaming.text) {
-          // Fallback: build from streaming state if no final payload.
-          // Strip any <final> tags that may have accumulated in the stream buffer.
-          const cleanStreamText = stripFinalTags(streaming.text)
-          const content: Array<MessageContent> = []
-
-          if (streaming.thinking) {
-            content.push({
-              type: 'thinking',
-              thinking: streaming.thinking,
-            } as ThinkingContent)
-          }
-
-          if (cleanStreamText) {
-            content.push({
-              type: 'text',
-              text: cleanStreamText,
-            } as TextContent)
-          }
-
-          for (const toolCall of streaming.toolCalls) {
-            content.push({
-              type: 'toolCall',
-              id: toolCall.id,
-              name: toolCall.name,
-              arguments: toolCall.args as Record<string, unknown> | undefined,
-            } as ToolCallContent)
-          }
-
-          completeMessage = {
-            role: 'assistant',
-            content,
-            timestamp: now,
-            __receiveTime: now,
-            __realtimeSequence: realtimeMessageSequence++,
-            __streamingStatus: 'complete',
-          }
-        }
+        const completeMessage = finalizeStreamingMessage(
+          event.message,
+          streaming,
+          stripFinalTagsFromMessage,
+          now,
+          realtimeMessageSequence++,
+        )
 
         console.log('[chat-store:done] completeMessage=', completeMessage ? { role: completeMessage.role, contentLen: JSON.stringify(completeMessage.content).length } : null)
         if (completeMessage) {
           const messages = new Map(state.realtimeMessages)
           const sessionMessages = [...(messages.get(sessionKey) ?? [])]
 
-          // Deduplicate: by ID or exact content (bug #7 fix).
-          // extractMessageText handles both content-array and legacy top-level
-          // text/body/message payloads, and strips <final> tags for both.
-          const completeText = extractMessageText(completeMessage)
-          const completeId = getMessageId(completeMessage)
-          const isDuplicate = sessionMessages.some((existing) => {
-            if (existing.role !== 'assistant') return false
-            const existingId = getMessageId(existing)
-            if (completeId && existingId && completeId === existingId) return true
-            if (completeText && completeText === extractMessageText(existing)) return true
-            return false
-          })
+          const existingIdx = findDoneEventDuplicateIndex(completeMessage, sessionMessages)
 
-          if (!isDuplicate) {
+          if (existingIdx === -1) {
             sessionMessages.push(completeMessage)
             messages.set(sessionKey, sortMessagesChronologically(sessionMessages))
             set({ realtimeMessages: messages })
           } else {
-            // If there IS a duplicate (e.g. a tagged pre-final message was stored),
-            // replace it with the clean final version so the UI shows clean text.
-            const existingIdx = sessionMessages.findIndex((existing) => {
-              if (existing.role !== 'assistant') return false
-              const existingId = getMessageId(existing)
-              if (completeId && existingId && completeId === existingId) return true
-              if (completeText && completeText === extractMessageText(existing)) return true
-              return false
-            })
-            if (existingIdx >= 0) {
-              sessionMessages[existingIdx] = {
-                ...sessionMessages[existingIdx],
-                ...completeMessage,
-              }
-              messages.set(sessionKey, sortMessagesChronologically(sessionMessages))
-              set({ realtimeMessages: messages })
+            // Replace tagged pre-final message with clean final version
+            sessionMessages[existingIdx] = {
+              ...sessionMessages[existingIdx],
+              ...completeMessage,
             }
+            messages.set(sessionKey, sortMessagesChronologically(sessionMessages))
+            set({ realtimeMessages: messages })
           }
         }
 
@@ -979,71 +574,6 @@ export const useChatStore = create<ChatState>((set, get) => ({
       return sortMessagesChronologically(historyMessages)
     }
 
-    const matchesRealtimeMessage = (histMsg: ChatMessage, rtMsg: ChatMessage): boolean => {
-      const rtId = getMessageId(rtMsg)
-      const rtText = extractMessageText(rtMsg)
-      const rtNonce = getClientNonce(rtMsg)
-      const rtSignature = messageMultipartSignature(rtMsg)
-      const histId = getMessageId(histMsg)
-      if (rtId && histId && rtId === histId) {
-        return true
-      }
-
-      const histNonce = getClientNonce(histMsg)
-      if (rtNonce && histNonce && rtNonce === histNonce) {
-        return true
-      }
-
-      if (histMsg.role === rtMsg.role && rtText) {
-        const histText = extractMessageText(histMsg)
-        if (histText === rtText) return true
-      }
-
-      const histRaw = histMsg as Record<string, unknown>
-      const histIsOptimistic =
-        normalizeString(histRaw.status) === 'sending' ||
-        normalizeString(histRaw.__optimisticId).length > 0
-
-      if (histIsOptimistic && histMsg.role === rtMsg.role) {
-        if (rtText) {
-          const histText = extractMessageText(histMsg)
-          if (histText === rtText) return true
-          if (histText && rtText.startsWith(histText)) return true
-        }
-        const rtAttachments = Array.isArray((rtMsg as any).attachments)
-          ? (rtMsg as any).attachments as Array<Record<string, unknown>>
-          : []
-        const histAttachments = Array.isArray((histMsg as any).attachments)
-          ? (histMsg as any).attachments as Array<Record<string, unknown>>
-          : []
-        if (
-          rtAttachments.length > 0 &&
-          rtAttachments.length == histAttachments.length
-        ) {
-          const rtSig = rtAttachments
-            .map(
-              (a) =>
-                `${normalizeString(a.name)}:${String(a.size ?? '')}`,
-            )
-            .sort()
-            .join('|')
-          const histSig = histAttachments
-            .map(
-              (a) =>
-                `${normalizeString(a.name)}:${String(a.size ?? '')}`,
-            )
-            .sort()
-            .join('|')
-          if (rtSig && rtSig === histSig) return true
-        }
-      }
-
-      return (
-        rtSignature.length > 0 &&
-        rtSignature === messageMultipartSignature(histMsg)
-      )
-    }
-
     const mergedHistoryMessages = historyMessages.map((histMsg) => {
       const matchingRealtime = realtimeMessages.find((rtMsg) =>
         matchesRealtimeMessage(histMsg, rtMsg),
@@ -1066,86 +596,3 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 }))
 
-function extractTextFromContent(
-  content: Array<MessageContent> | undefined,
-): string {
-  if (!content || !Array.isArray(content)) return ''
-  return stripFinalTags(
-    content
-      .filter(
-        (c): c is TextContent =>
-          c.type === 'text' && typeof (c as any).text === 'string',
-      )
-      .map((c) => c.text)
-      .join('\n')
-      .trim(),
-  )
-}
-
-/**
- * Extract text from a ChatMessage using multiple strategies:
- *   1. content array (canonical format)
- *   2. top-level text/body/message fields (legacy / some server adapters)
- *
- * Some servers echo user messages with a top-level `text` field instead of
- * the `content` array. Using only extractTextFromContent() would return ''
- * for those, causing dedup to fail in mergeHistoryMessages.
- */
-function extractMessageText(msg: ChatMessage | null | undefined): string {
-  if (!msg) return ''
-  const fromContent = extractTextFromContent(msg.content)
-  if (fromContent.length > 0) return fromContent
-
-  const raw = msg as Record<string, unknown>
-  for (const key of ['text', 'body', 'message']) {
-    const val = raw[key]
-    if (typeof val === 'string' && val.trim().length > 0) return stripFinalTags(val.trim())
-  }
-  return ''
-}
-
-function ensureAssistantTextContent(msg: ChatMessage): ChatMessage {
-  if (msg.role !== 'assistant') return msg
-  if (Array.isArray(msg.content) && msg.content.length > 0) return msg
-
-  const text = extractMessageText(msg)
-  if (!text) return msg
-
-  return {
-    ...msg,
-    content: [{ type: 'text', text } as TextContent],
-  }
-}
-
-function mergeRealtimeAssistantMetadata(
-  historyMessage: ChatMessage,
-  realtimeMessage: ChatMessage,
-): ChatMessage {
-  if (historyMessage.role !== 'assistant' || realtimeMessage.role !== 'assistant') {
-    return historyMessage
-  }
-
-  const realtimeToolCalls = Array.isArray((realtimeMessage as any).__streamToolCalls)
-    ? (realtimeMessage as any).__streamToolCalls
-    : []
-  const historyToolCalls = Array.isArray((historyMessage as any).__streamToolCalls)
-    ? (historyMessage as any).__streamToolCalls
-    : []
-  const historyStreamToolCalls = Array.isArray((historyMessage as any).streamToolCalls)
-    ? (historyMessage as any).streamToolCalls
-    : []
-
-  if (
-    realtimeToolCalls.length === 0 ||
-    historyToolCalls.length > 0 ||
-    historyStreamToolCalls.length > 0
-  ) {
-    return historyMessage
-  }
-
-  return {
-    ...historyMessage,
-    __streamToolCalls: realtimeToolCalls,
-    streamToolCalls: realtimeToolCalls,
-  }
-}

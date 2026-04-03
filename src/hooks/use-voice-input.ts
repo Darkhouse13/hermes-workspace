@@ -28,14 +28,54 @@ type UseVoiceInputReturn = {
 }
 
 // Web Speech API types (not available in all TS configs)
- 
-type SpeechRecognitionInstance = any
+
+interface SpeechRecognitionResultItem {
+  transcript: string
+}
+
+interface SpeechRecognitionResult {
+  readonly isFinal: boolean
+  readonly length: number
+  [index: number]: SpeechRecognitionResultItem | undefined
+}
+
+interface SpeechRecognitionResultList {
+  readonly length: number
+  [index: number]: SpeechRecognitionResult
+}
+
+interface SpeechRecognitionEvent {
+  readonly resultIndex: number
+  readonly results: SpeechRecognitionResultList
+}
+
+interface SpeechRecognitionErrorEvent {
+  readonly error: string
+}
+
+interface SpeechRecognitionInstance {
+  lang: string
+  interimResults: boolean
+  continuous: boolean
+  maxAlternatives: number
+  onstart: (() => void) | null
+  onresult: ((event: SpeechRecognitionEvent) => void) | null
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null
+  onend: (() => void) | null
+  start(): void
+  stop(): void
+}
+
 type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance
+
+type WindowWithSpeechRecognition = Window & typeof globalThis & {
+  SpeechRecognition?: SpeechRecognitionConstructor
+  webkitSpeechRecognition?: SpeechRecognitionConstructor
+}
 
 function getSpeechRecognition(): SpeechRecognitionConstructor | null {
   if (typeof window === 'undefined') return null
-   
-  const win = window as any
+  const win = window as WindowWithSpeechRecognition
   return win.SpeechRecognition ?? win.webkitSpeechRecognition ?? null
 }
 
@@ -100,13 +140,13 @@ export function useVoiceInput(
       setTranscript('')
     }
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
       let finalText = ''
       let interimText = ''
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i]
-        if (!result?.[0]) continue
+        if (!result[0]) continue
         const text = result[0].transcript
         if (result.isFinal) {
           finalText += text
@@ -125,7 +165,7 @@ export function useVoiceInput(
       }
     }
 
-    recognition.onerror = (event: any) => {
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
       if (event.error === 'aborted' || event.error === 'no-speech') {
         setState('idle')
         return

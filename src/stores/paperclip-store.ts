@@ -1,6 +1,6 @@
 
 import { create } from 'zustand'
-import type { PaperclipApproval, PaperclipHandoff, PaperclipMission, PaperclipProjectDetail, PaperclipProjectSummary, RouteNextAction } from '@/types/paperclip'
+import type { LaunchRoleRequest, PaperclipApproval, PaperclipHandoff, PaperclipMission, PaperclipProjectDetail, PaperclipProjectSummary, RouteNextAction } from '@/types/paperclip'
 import * as api from '@/lib/paperclip-api'
 
 type PaperclipStore = {
@@ -29,13 +29,13 @@ type PaperclipStore = {
   createProject: (payload: Record<string, unknown>) => Promise<void>
   createMission: (payload: Record<string, unknown>) => Promise<void>
   createHandoff: (payload: Record<string, unknown>) => Promise<void>
-  launchRole: (payload: any) => Promise<void>
+  launchRole: (payload: LaunchRoleRequest) => Promise<void>
   updateMission: (missionId: string, payload: Record<string, unknown>) => Promise<void>
   updateApproval: (payload: Record<string, unknown>) => Promise<void>
   createSuccessorFromRecommendation: (projectId: string) => Promise<void>
 }
 
-async function withLoad<T>(set: any, fn: () => Promise<T>): Promise<T> {
+async function withLoad<T>(set: (partial: Partial<PaperclipStore>) => void, fn: () => Promise<T>): Promise<T> {
   set({ loading: true, error: null })
   try {
     const result = await fn()

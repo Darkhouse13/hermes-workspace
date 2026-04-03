@@ -7,7 +7,7 @@ import { getProject } from '@/server/paperclip-projects'
 
 const STALE_MISSION_MS = 1000 * 60 * 30
 
-function suggestSuccessor(role: PaperclipRole): {
+export function suggestSuccessor(role: PaperclipRole): {
   role: PaperclipRole
   title: string
   goal: string
@@ -59,13 +59,13 @@ function suggestSuccessor(role: PaperclipRole): {
   }
 }
 
-function hasUnmetDependencies(mission: PaperclipMission, all: Array<PaperclipMission>): boolean {
+export function hasUnmetDependencies(mission: PaperclipMission, all: Array<PaperclipMission>): boolean {
   if (!mission.dependencyIds.length) return false
   const completed = new Set(all.filter((item) => item.status === 'completed').map((item) => item.id))
   return mission.dependencyIds.some((dependencyId) => !completed.has(dependencyId))
 }
 
-function latestMissionNeedingFollowup(missions: Array<PaperclipMission>): PaperclipMission | null {
+export function latestMissionNeedingFollowup(missions: Array<PaperclipMission>): PaperclipMission | null {
   return [...missions]
     .filter((mission) => mission.status === 'completed' || mission.status === 'awaiting_handoff')
     .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0] || null
@@ -136,7 +136,7 @@ export async function routeNextForProject(projectIdOrSlug: string): Promise<Rout
   const queued = [...missions]
     .filter((mission) => mission.status === 'queued')
     .filter((mission) => !hasUnmetDependencies(mission, missions))
-    .sort((a, b) => b.priority - a.priority || a.riskTier - b.riskTier)[0]
+    .sort((a, b) => b.priority - a.priority || a.riskTier - b.riskTier).at(0)
   if (queued) {
     const result: RouteNextAction = {
       action: 'launch_mission',
@@ -164,7 +164,7 @@ export async function routeNextForProject(projectIdOrSlug: string): Promise<Rout
     return result
   }
 
-  const latestHandoff = handoffs[0]
+  const latestHandoff = handoffs.at(0)
   if (latestHandoff) {
     const result: RouteNextAction = {
       action: 'review_handoff',

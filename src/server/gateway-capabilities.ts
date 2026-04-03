@@ -8,6 +8,10 @@
  *   - Enhanced: Hermes-native extras (sessions, skills, memory, config, jobs)
  */
 
+import { createLogger } from './logger'
+
+const log = createLogger('gateway-capabilities')
+
 export let HERMES_API =
   process.env.HERMES_API_URL || 'http://127.0.0.1:8642'
 
@@ -84,7 +88,8 @@ async function probe(path: string): Promise<boolean> {
     // Only 2xx, 400, 405, 422 reliably indicate the endpoint exists.
     if (res.status === 404 || res.status === 403) return false
     return true
-  } catch {
+  } catch (err) {
+    log.debug(`Probe failed for ${path}`, { error: String(err) })
     return false
   }
 }
@@ -118,7 +123,8 @@ async function probeChatCompletions(): Promise<boolean> {
       return text.includes('error') || text.includes('unauthorized') || text.includes('forbidden')
     }
     return true
-  } catch {
+  } catch (err) {
+    log.debug('Probe failed for /v1/chat/completions', { error: String(err) })
     return false
   }
 }
@@ -147,14 +153,12 @@ function logCapabilities(next: GatewayCapabilities): void {
     `[gateway] ${HERMES_API} mode=${mode} core=[${core.join(', ')}] enhanced=[${enhanced.join(', ')}] missing=[${missing.join(', ')}]`
   if (summary === lastLoggedSummary) return
   lastLoggedSummary = summary
-  console.log(summary)
+  log.info(summary)
 
   // Only warn about critical missing APIs (not optional ones)
   const criticalMissing = missing.filter((key) => !OPTIONAL_APIS.has(key))
   if (criticalMissing.length > 0 && next.health) {
-    console.warn(
-      `[gateway] Missing Hermes APIs detected. ${HERMES_UPGRADE_INSTRUCTIONS}`,
-    )
+    log.warn(`Missing Hermes APIs detected. ${HERMES_UPGRADE_INSTRUCTIONS}`)
   }
 }
 
@@ -180,12 +184,12 @@ export async function probeGateway(options?: {
         }).then(r => r.ok).catch(() => false)
         if (healthOn8643) {
           HERMES_API = fallback
-          console.log(`[gateway] Connected to Hermes at ${HERMES_API}`)
+          log.info(`Connected to Hermes at ${HERMES_API}`)
         } else {
-          console.warn('[gateway] Could not reach Hermes on 8642 or 8643')
+          log.warn('Could not reach Hermes on 8642 or 8643')
         }
       } else {
-        console.log(`[gateway] Connected to Hermes at ${HERMES_API}`)
+        log.info(`Connected to Hermes at ${HERMES_API}`)
       }
     }
 

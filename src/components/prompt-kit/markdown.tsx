@@ -1,3 +1,24 @@
+/**
+ * Why both `marked` and `react-markdown` (remark) are used:
+ *
+ * `marked.lexer()` is used exclusively for block-level tokenization — it splits
+ * a markdown string into discrete top-level blocks (headings, paragraphs, code
+ * fences, lists, tables, etc.) so that each block can be rendered as a separate
+ * `<MemoizedMarkdownBlock>` component. This enables per-block memoization: when
+ * streaming LLM output appends text, only the final (in-progress) block
+ * re-renders while earlier blocks are skipped via React.memo.
+ *
+ * `react-markdown` (which uses remark/unified internally) handles the actual
+ * rendering of each individual block into React elements.
+ *
+ * Replacing `marked.lexer()` with remark-parse was evaluated and rejected:
+ *  - `unified` and `remark-parse` are transitive deps of `react-markdown`, not
+ *    direct deps. Importing transitive deps is fragile across version bumps.
+ *  - Adding them as direct deps replaces one dependency with two.
+ *  - remark-parse positions may exclude inter-block whitespace, risking subtle
+ *    rendering differences compared to marked's `.raw` token property.
+ *  - The current approach is minimal (one call, one map) and well-tested.
+ */
 import { marked } from 'marked'
 import { createContext, memo, useContext, useId, useMemo, useRef } from 'react'
 import ReactMarkdown from 'react-markdown'

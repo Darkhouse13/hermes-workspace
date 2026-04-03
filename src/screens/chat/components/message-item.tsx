@@ -11,16 +11,14 @@ import {
 } from '../utils'
 import { MessageActionsBar } from './message-actions-bar'
 import type {
-  ChatAttachment,
   ChatMessage,
+  ExecNotification,
+  StreamToolCall,
   ToolCallContent,
 } from '../types'
 import type { ToolPart } from '@/components/prompt-kit/tool'
 import { AssistantAvatar, UserAvatar } from '@/components/avatars'
-import { CodeBlock } from '@/components/prompt-kit/code-block'
-import { Markdown } from '@/components/prompt-kit/markdown'
 import { Message, MessageContent } from '@/components/prompt-kit/message'
-import { Button } from '@/components/ui/button'
 import {
   Collapsible,
   CollapsiblePanel,
@@ -32,84 +30,15 @@ import {
   useChatSettingsStore,
 } from '@/hooks/use-chat-settings'
 import { cn } from '@/lib/utils'
+import { formatToolDisplayLabel } from '@/lib/chat-tool-labels'
+import { useMessageStreamingReveal } from '../hooks/use-message-streaming-reveal'
+import {
+  attachmentSource,
+  MessageAttachments,
+  MarkdownDocumentCard,
+} from './message-attachments'
 
-
-const WORDS_PER_TICK = 4
-const TICK_INTERVAL_MS = 50
 const STUCK_SENDING_THRESHOLD_MS = 120_000
-
-function isWhitespaceCharacter(value: string): boolean {
-  return /\s/.test(value)
-}
-
-function countWords(text: string): number {
-  let count = 0
-  let inWord = false
-
-  for (const character of text) {
-    if (isWhitespaceCharacter(character)) {
-      if (inWord) {
-        count += 1
-        inWord = false
-      }
-      continue
-    }
-    inWord = true
-  }
-
-  if (inWord) {
-    count += 1
-  }
-
-  return count
-}
-
-function getWordBoundaryIndex(text: string, wordCount: number): number {
-  if (text.length === 0 || wordCount <= 0) return 0
-
-  let count = 0
-  let index = 0
-  let inWord = false
-
-  while (index < text.length) {
-    const character = text[index] ?? ''
-    if (isWhitespaceCharacter(character)) {
-      if (inWord) {
-        count += 1
-        if (count >= wordCount) {
-          return index
-        }
-        inWord = false
-      }
-    } else {
-      inWord = true
-    }
-    index += 1
-  }
-
-  if (inWord) {
-    count += 1
-    if (count >= wordCount) {
-      return text.length
-    }
-  }
-
-  return text.length
-}
-
-type StreamToolCall = {
-  id: string
-  name: string
-  phase: 'calling' | 'running' | 'done' | 'error'
-  args?: unknown
-  result?: string
-}
-
-type ExecNotification = {
-  name: string
-  exitCode: number | null
-  ok: boolean | null
-}
 
 type LifecycleEvent = {
   text: string
@@ -260,11 +189,11 @@ function normalizeTimestamp(value: unknown): number | null {
 
 function rawTimestamp(message: ChatMessage): number | null {
   const candidates = [
-    (message as any).createdAt,
-    (message as any).created_at,
-    (message as any).timestamp,
-    (message as any).time,
-    (message as any).ts,
+    message.createdAt,
+    message.created_at,
+    message.timestamp,
+    message.time,
+    message.ts,
   ]
   for (const candidate of candidates) {
     const normalized = normalizeTimestamp(candidate)
@@ -295,9 +224,7 @@ function normalizeStreamToolPhase(
 }
 
 function readExecNotification(message: ChatMessage): ExecNotification | null {
-  const raw = (message as any).__execNotification as
-    | Record<string, unknown>
-    | undefined
+  const raw = message.__execNotification
   if (!raw || typeof raw !== 'object') return null
   const name = typeof raw.name === 'string' ? raw.name : ''
   const exitCode =
@@ -310,110 +237,6 @@ function readExecNotification(message: ChatMessage): ExecNotification | null {
     exitCode,
     ok,
   }
-}
-
-function readStringArg(
-  args: Record<string, unknown> | undefined,
-  ...keys: Array<string>
-): string | null {
-  if (!args) return null
-  for (const key of keys) {
-    const value = args[key]
-    if (typeof value === 'string' && value.trim()) {
-      return value.trim()
-    }
-  }
-  return null
-}
-
-function fileNameFromPath(value: string): string {
-  const normalized = value.trim().replace(/[\\/]+$/, '')
-  if (!normalized) return value.trim()
-  const parts = normalized.split(/[\\/]/)
-  return parts[parts.length - 1] || normalized
-}
-
-const TOOL_DISPLAY_LABELS: Record<string, string> = {
-  browser_click: '🖱 Click Element',
-  browser_type: '⌨ Type Text',
-  browser_press: '⏎ Press Key',
-  browser_scroll: '↕ Scroll',
-  browser_back: '← Back',
-  browser_get_images: '🖼 Get Images',
-  browser_vision: '👁 Vision Capture',
-  browser_close: '✕ Close Browser',
-  execute_code: '🐍 Execute Code',
-  process: '⚙ Process',
-  'multi_tool_use.parallel': '⚡ Parallel Tools',
-  todo: '☑ Todo',
-  cronjob: '⏰ Cron Job',
-  delegate_task: '👥 Delegate Task',
-  mixture_of_agents: '🧠 Mixture of Agents',
-  session_search: '🔍 Search Sessions',
-  clarify: '❓ Clarify',
-  skill_manage: '📦 Manage Skill',
-  vision_analyze: '👁 Analyze Image',
-  image_generate: '🎨 Generate Image',
-  send_message: '💬 Send Message',
-  text_to_speech: '🔊 Text to Speech',
-  honcho_profile: '👤 Honcho Profile',
-  honcho_search: '🔎 Honcho Search',
-  honcho_context: '📋 Honcho Context',
-  ha_list_entities: '🏠 HA Entities',
-  ha_get_state: '🏠 HA State',
-  ha_list_services: '🏠 HA Services',
-  web_search: '🌐 Web Search',
-  web_extract: '📄 Web Extract',
-  browser_navigate: '🌐 Open Page',
-  browser_snapshot: '📸 Snapshot',
-}
-
-function formatToolDisplayLabel(
-  name: string,
-  args?: Record<string, unknown>,
-): string {
-  const normalizedName = name.trim()
-  const lowerName = normalizedName.toLowerCase()
-  const mappedLabel = TOOL_DISPLAY_LABELS[lowerName]
-  if (mappedLabel) return mappedLabel
-
-  if (lowerName === 'read' || lowerName === 'read_file') {
-    const filePath = readStringArg(args, 'file_path', 'path', 'target_file')
-    return filePath ? `read ${fileNameFromPath(filePath)}` : 'read file'
-  }
-
-  if (lowerName === 'edit' || lowerName === 'patch_file') {
-    const filePath = readStringArg(args, 'file_path', 'path', 'target_file')
-    return filePath ? `edit ${fileNameFromPath(filePath)}` : 'edit file'
-  }
-
-  if (lowerName === 'write' || lowerName === 'write_file' || lowerName === 'create_file') {
-    const filePath = readStringArg(args, 'file_path', 'path', 'target_file')
-    return filePath ? `write ${fileNameFromPath(filePath)}` : 'write file'
-  }
-
-  if (lowerName === 'search_files') {
-    const pattern = readStringArg(args, 'pattern', 'query', 'regex')
-    return pattern ? `search "${pattern}"` : 'search files'
-  }
-
-  if (lowerName === 'browser' || lowerName === 'browser_navigate') {
-    const action = readStringArg(args, 'action', 'url')
-    return action ? `browser ${action}` : 'browser'
-  }
-
-  if (lowerName === 'terminal' || lowerName === 'exec') {
-    const cmd = readStringArg(args, 'command', 'cmd')
-    return cmd ? `exec ${cmd.length > 30 ? cmd.slice(0, 27) + '…' : cmd}` : 'exec'
-  }
-
-  if (lowerName === 'memory_search') return 'memory search'
-  if (lowerName === 'save_memory') return 'save memory'
-  if (lowerName === 'memory_get') return 'memory get'
-  if (lowerName === 'web_fetch') return 'web fetch'
-  if (lowerName === 'skill_view') return 'view skill'
-
-  return lowerName.replace(/_/g, ' ')
 }
 
 function readNumber(value: unknown): number | null {
@@ -665,249 +488,6 @@ function keyArgLabel(name: string, args?: Record<string, unknown>): string | nul
   }
 }
 
-// --- Anime-style Tool Call Card ---
-
-const TOOL_EMOJI_ICONS: Record<string, string> = {
-  web_search: '🔍',
-  search: '🔍',
-  search_files: '🔍',
-  session_search: '🔍',
-  terminal: '💻',
-  exec: '💻',
-  shell: '💻',
-  bash: '💻',
-  Read: '📖',
-  read: '📖',
-  read_file: '📖',
-  file_read: '📖',
-  Write: '✏️',
-  write: '✏️',
-  write_file: '✏️',
-  file_write: '✏️',
-  Edit: '✏️',
-  edit: '✏️',
-  memory: '🧠',
-  memory_search: '🧠',
-  memory_get: '🧠',
-  save_memory: '🧠',
-  browser: '🌐',
-  browser_navigate: '🌐',
-  navigate: '🌐',
-  image: '🖼️',
-  vision: '🖼️',
-  skill: '📦',
-  skill_view: '📦',
-  skill_load: '📦',
-  delegate: '🤖',
-  spawn: '🤖',
-  tts: '🗣️',
-  speak: '🗣️',
-}
-
-const TOOL_VERBS: Record<string, string> = {
-  web_search: 'Searching',
-  search: 'Searching',
-  search_files: 'Searching',
-  terminal: 'Executing',
-  exec: 'Executing',
-  shell: 'Executing',
-  bash: 'Executing',
-  Read: 'Reading',
-  read: 'Reading',
-  read_file: 'Reading',
-  file_read: 'Reading',
-  Write: 'Writing',
-  write: 'Writing',
-  write_file: 'Writing',
-  file_write: 'Writing',
-  Edit: 'Writing',
-  edit: 'Writing',
-  memory: 'Remembering',
-  memory_search: 'Remembering',
-  memory_get: 'Remembering',
-  save_memory: 'Remembering',
-  browser: 'Browsing',
-  browser_navigate: 'Browsing',
-  navigate: 'Browsing',
-  image: 'Analyzing',
-  vision: 'Analyzing',
-  delegate: 'Delegating',
-  spawn: 'Delegating',
-  tts: 'Speaking',
-  speak: 'Speaking',
-}
-
-function useElapsedTime(active: boolean): string {
-  const [elapsed, setElapsed] = useState(0)
-  const startRef = useRef<number>(Date.now())
-
-  useEffect(() => {
-    if (!active) return
-    startRef.current = Date.now()
-    setElapsed(0)
-    const interval = setInterval(() => {
-      const secs = Math.floor((Date.now() - startRef.current) / 1000)
-      setElapsed(secs)
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [active])
-
-  if (!active && elapsed === 0) return ''
-  if (elapsed < 60) return `${elapsed}s`
-  const m = Math.floor(elapsed / 60)
-  const s = elapsed % 60
-  return `${m}m ${s}s`
-}
-
-function useAnimatedDots(): string {
-  const [dots, setDots] = useState(0)
-  useEffect(() => {
-    const interval = setInterval(() => setDots((d) => (d + 1) % 4), 500)
-    return () => clearInterval(interval)
-  }, [])
-  return '.'.repeat(dots)
-}
-
-function ToolCallPill({ toolCall }: { toolCall: StreamToolCall }) {
-  const isDone = toolCall.phase === 'done'
-  const isError = toolCall.phase === 'error'
-  const isRunning = !isDone && !isError
-  const [expanded, setExpanded] = useState(false)
-  const [showMore, setShowMore] = useState(false)
-
-  const emoji = TOOL_EMOJI_ICONS[toolCall.name]
-    ?? (toolCall.name.includes('search') ? '🔍'
-      : toolCall.name.includes('read') || toolCall.name.includes('Read') ? '📖'
-      : toolCall.name.includes('write') || toolCall.name.includes('Write') || toolCall.name.includes('edit') || toolCall.name.includes('Edit') ? '✏️'
-      : toolCall.name.includes('exec') || toolCall.name.includes('terminal') || toolCall.name.includes('shell') ? '💻'
-      : toolCall.name.includes('memory') ? '🧠'
-      : toolCall.name.includes('browser') || toolCall.name.includes('navigate') ? '🌐'
-      : toolCall.name.includes('image') || toolCall.name.includes('vision') ? '🖼️'
-      : toolCall.name.includes('skill') ? '📦'
-      : toolCall.name.includes('delegate') || toolCall.name.includes('spawn') ? '🤖'
-      : '⚡')
-  const verb = TOOL_VERBS[toolCall.name]
-    ?? (toolCall.name.includes('search') ? 'Searching'
-      : toolCall.name.includes('read') || toolCall.name.includes('Read') ? 'Reading'
-      : toolCall.name.includes('write') || toolCall.name.includes('Write') || toolCall.name.includes('edit') || toolCall.name.includes('Edit') ? 'Writing'
-      : toolCall.name.includes('exec') || toolCall.name.includes('terminal') ? 'Executing'
-      : toolCall.name.includes('memory') ? 'Remembering'
-      : toolCall.name.includes('browser') ? 'Browsing'
-      : 'Working')
-  const displayName = formatToolDisplayLabel(
-    toolCall.name,
-    toolCall.args as Record<string, unknown> | undefined,
-  )
-  const label = keyArgLabel(toolCall.name, toolCall.args as Record<string, unknown> | undefined)
-  const truncated = label && label.length > 50 ? `${label.slice(0, 47)}…` : label
-
-  const elapsed = useElapsedTime(isRunning)
-  const dots = useAnimatedDots()
-
-  const result = toolCall.result ?? ''
-  const preview = result.slice(0, 100)
-  const detail = result.slice(0, 500)
-  const hasMore = result.length > 500
-
-  const borderColor = isDone
-    ? 'color-mix(in srgb, var(--theme-success) 35%, var(--theme-border))'
-    : isError
-      ? 'color-mix(in srgb, var(--theme-danger) 35%, var(--theme-border))'
-      : 'color-mix(in srgb, var(--theme-accent) 50%, var(--theme-border))'
-
-  const leftAccent = isRunning ? 'var(--theme-accent)' : isDone ? 'var(--theme-success)' : 'var(--theme-danger)'
-
-  return (
-    <div
-      className="rounded-lg border border-primary-200 bg-primary-50 text-[11px] max-w-full overflow-hidden"
-      style={{
-        borderLeftWidth: '3px',
-        borderLeftColor: isRunning ? '#6366f1' : isDone ? '#22c55e' : '#ef4444',
-        transition: 'border-color 0.3s',
-        boxShadow: isRunning ? '0 0 8px rgba(99,102,241,0.15)' : 'none',
-      }}
-    >
-      {/* Header row — always clickable */}
-      <button
-        type="button"
-        className="w-full flex items-center gap-1.5 px-2.5 py-1.5 hover:opacity-80 text-left"
-        onClick={() => setExpanded((v) => !v)}
-      >
-        <span className="shrink-0 text-[10px] opacity-50">{expanded ? '▾' : '▸'}</span>
-        <span className="shrink-0 text-sm leading-none">{emoji}</span>
-        <span className="shrink-0 font-mono font-semibold text-ink">{displayName}</span>
-        {truncated && truncated !== displayName && (
-          <span className="truncate opacity-40 text-[10px] font-mono min-w-0">{truncated}</span>
-        )}
-        <span className="flex-1" />
-        {elapsed && (
-          <span className="shrink-0 text-[10px] tabular-nums text-primary-400">{elapsed}</span>
-        )}
-        {isDone && <span className="shrink-0 text-xs text-green-500">✅</span>}
-        {isError && <span className="shrink-0 text-xs text-red-500">❌</span>}
-        {isRunning && <span className="shrink-0 size-1.5 rounded-full animate-pulse bg-indigo-500" />}
-      </button>
-      {isRunning && !expanded && (
-        <div className="px-2.5 pb-1.5 text-[10px] text-primary-400">
-          <span>{verb}{dots}</span>
-        </div>
-      )}
-      {/* Expanded content — args while running, result when done */}
-      {expanded && (
-        <div className="border-t" style={{ borderColor: 'var(--theme-border)' }}>
-          {/* Show args (input) */}
-          {toolCall.args != null && typeof toolCall.args === 'object' && Object.keys(toolCall.args as Record<string, unknown>).length > 0 && (
-            <div className="px-2.5 py-1.5">
-              <div className="text-[9px] uppercase tracking-widest opacity-40 mb-0.5">Input</div>
-              <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto text-ink opacity-70">
-                {JSON.stringify(toolCall.args, null, 2)}
-              </pre>
-            </div>
-          )}
-          {/* Show result when done */}
-          {isDone && result && (
-            <div className="px-2.5 py-1.5 border-t" style={{ borderColor: 'var(--theme-border)' }}>
-              <div className="text-[9px] uppercase tracking-widest opacity-40 mb-0.5">Output</div>
-              <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto text-ink opacity-80">
-                {showMore ? result : detail}
-                {hasMore && !showMore && (
-                  <button
-                    type="button"
-                    className="block mt-1 text-[10px] underline text-accent-500"
-                    onClick={(e) => { e.stopPropagation(); setShowMore(true) }}
-                  >
-                    Show more
-                  </button>
-                )}
-              </pre>
-            </div>
-          )}
-          {/* Show error */}
-          {isError && result && (
-            <div className="px-2.5 py-1.5">
-              <div className="text-[9px] uppercase tracking-widest text-red-500 mb-0.5">Error</div>
-              <pre className="text-[10px] font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto text-red-500">
-                {result}
-              </pre>
-            </div>
-          )}
-          {/* Running indicator when expanded */}
-          {isRunning && (
-            <div className="px-2.5 py-1.5 text-[10px] text-primary-400 border-t" style={{ borderColor: 'var(--theme-border)' }}>
-              <span>{verb}{dots}</span>
-            </div>
-          )}
-        </div>
-      )}
-      {!expanded && isError && result && (
-        <div className="px-2.5 pb-1.5 text-[10px] font-mono truncate text-red-500">
-          {result.slice(0, 80)}
-        </div>
-      )}
-    </div>
-  )
-}
-
 function LifecycleEventCard({
   text,
   emoji,
@@ -933,180 +513,6 @@ function LifecycleEventCard({
         <span>{text}</span>
       </span>
     </div>
-  )
-}
-
-function attachmentSource(attachment: ChatAttachment | undefined): string {
-  if (!attachment) return ''
-  const candidates = [attachment.previewUrl, attachment.dataUrl, attachment.url]
-  for (const candidate of candidates) {
-    if (typeof candidate === 'string' && candidate.trim().length > 0) {
-      return candidate
-    }
-  }
-  return ''
-}
-
-function attachmentExtension(attachment: ChatAttachment): string {
-  const name = typeof attachment.name === 'string' ? attachment.name : ''
-  const fromName = name.split('.').pop()?.trim().toLowerCase() || ''
-  if (fromName) return fromName
-
-  const source = attachmentSource(attachment)
-  const fileName = source.split('?')[0]?.split('#')[0]?.split('/').pop() || ''
-  return fileName.split('.').pop()?.trim().toLowerCase() || ''
-}
-
-function isImageAttachment(attachment: ChatAttachment): boolean {
-  const contentType =
-    typeof attachment.contentType === 'string'
-      ? attachment.contentType.trim().toLowerCase()
-      : ''
-  if (contentType.startsWith('image/')) return true
-
-  const ext = attachmentExtension(attachment)
-  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'avif'].includes(ext)
-}
-
-function isMarkdownAttachment(attachment: ChatAttachment): boolean {
-  const ext = attachmentExtension(attachment)
-  if (ext === 'md' || ext === 'markdown' || ext === 'mdx') return true
-
-  const contentType =
-    typeof attachment.contentType === 'string'
-      ? attachment.contentType.trim().toLowerCase()
-      : ''
-  return contentType.includes('markdown')
-}
-
-function decodeAttachmentText(attachment: ChatAttachment): string {
-  const candidates = [attachment.dataUrl, attachment.previewUrl, attachment.url]
-
-  for (const candidate of candidates) {
-    if (typeof candidate !== 'string' || candidate.trim().length === 0) continue
-    const trimmed = candidate.trim()
-
-    if (!trimmed.startsWith('data:')) {
-      return trimmed
-    }
-
-    const commaIndex = trimmed.indexOf(',')
-    if (commaIndex < 0) continue
-
-    const metadata = trimmed.slice(0, commaIndex).toLowerCase()
-    const payload = trimmed.slice(commaIndex + 1)
-
-    try {
-      if (metadata.includes(';base64')) {
-        return decodeURIComponent(escape(atob(payload)))
-      }
-      return decodeURIComponent(payload)
-    } catch {
-      continue
-    }
-  }
-
-  return ''
-}
-
-function MarkdownDocumentCard({
-  title,
-  content,
-  openHref,
-  className,
-}: {
-  title: string
-  content: string
-  openHref?: string
-  className?: string
-}) {
-  const [viewMode, setViewMode] = useState<'preview' | 'source'>('preview')
-  const hasContent = content.trim().length > 0
-
-  return (
-    <div
-      className={cn(
-        'w-full max-w-[42rem] overflow-hidden rounded-2xl border border-primary-200 bg-primary-50/70',
-        className,
-      )}
-    >
-      <div className="flex items-start justify-between gap-3 border-b border-primary-200 px-3 py-2.5">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-primary-900">{title}</div>
-          <div className="text-[11px] text-primary-600">Markdown document</div>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {hasContent ? (
-            <div className="flex items-center rounded-lg border border-primary-200 bg-primary-100/70 p-0.5">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  'h-7 px-2.5 text-xs',
-                  viewMode === 'preview' &&
-                    'bg-primary-200 text-primary-900 hover:bg-primary-200',
-                )}
-                onClick={() => setViewMode('preview')}
-              >
-                Preview
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  'h-7 px-2.5 text-xs',
-                  viewMode === 'source' &&
-                    'bg-primary-200 text-primary-900 hover:bg-primary-200',
-                )}
-                onClick={() => setViewMode('source')}
-              >
-                Source
-              </Button>
-            </div>
-          ) : null}
-          {openHref ? (
-            <a
-              href={openHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-primary-700 underline decoration-primary-300 underline-offset-4 hover:decoration-primary-500"
-            >
-              Open
-            </a>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="max-h-[26rem] overflow-auto p-3">
-        {hasContent ? (
-          viewMode === 'preview' ? (
-            <Markdown className="text-sm">{content}</Markdown>
-          ) : (
-            <CodeBlock content={content} language="markdown" className="my-0" />
-          )
-        ) : (
-          <div className="text-sm text-primary-600">
-            Preview unavailable for this markdown content.
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function MarkdownAttachmentCard({ attachment }: { attachment: ChatAttachment }) {
-  const source = attachmentSource(attachment)
-  const content = useMemo(() => decodeAttachmentText(attachment), [attachment])
-  const ext = attachmentExtension(attachment)
-
-  return (
-    <MarkdownDocumentCard
-      title={`${attachment.name || 'Markdown attachment'}${ext ? ` • ${ext.toUpperCase()}` : ''}`}
-      content={content}
-      openHref={source || undefined}
-    />
   )
 }
 
@@ -1363,22 +769,20 @@ function MessageItemComponent({
   const remoteStreamingActive = isStreaming === true
 
   const fullText = useMemo(() => textFromMessage(message), [message])
-  const initialDisplayText = remoteStreamingActive
-    ? (remoteStreamingText ?? fullText)
-    : fullText
-  const [displayText, setDisplayText] = useState(() => initialDisplayText)
-  const [revealedWordCount, setRevealedWordCount] = useState(() =>
-    remoteStreamingActive || _simulateStreaming
-      ? 0
-      : countWords(initialDisplayText),
+  const {
+    displayText: assistantDisplayText,
+    effectiveIsStreaming,
+  } = useMessageStreamingReveal({
+    fullText,
+    remoteStreamingText,
+    remoteStreamingActive,
+    simulateStreaming: _simulateStreaming,
+    streamingKey: _streamingKey,
+  })
+  const standaloneMarkdownDocument = useMemo(
+    () => extractStandaloneMarkdownFence(assistantDisplayText),
+    [assistantDisplayText],
   )
-  const [revealedText, setRevealedText] = useState(() =>
-    remoteStreamingActive || _simulateStreaming ? '' : initialDisplayText,
-  )
-  const revealTimerRef = useRef<number | null>(null)
-  const targetWordCountRef = useRef(countWords(initialDisplayText))
-  const previousTextRef = useRef(initialDisplayText)
-  const previousTextLengthRef = useRef(initialDisplayText.length)
 
   // Track if this is a newly appeared message (for fade-in animation)
   const isNewRef = useRef(true)
@@ -1389,126 +793,6 @@ function MessageItemComponent({
     const timer = window.setTimeout(() => setIsNew(false), 600)
     return () => window.clearTimeout(timer)
   }, [])
-
-  useEffect(() => {
-    if (remoteStreamingActive) {
-      setDisplayText(remoteStreamingText ?? fullText)
-      return
-    }
-
-    setDisplayText((current) => (current === fullText ? current : fullText))
-  }, [remoteStreamingActive, remoteStreamingText, fullText])
-
-  // Reset word count when simulate streaming starts for a new message
-  useEffect(() => {
-    if (_simulateStreaming && !remoteStreamingActive) {
-      setRevealedWordCount(0)
-    }
-  }, [_streamingKey, _simulateStreaming, remoteStreamingActive])
-
-  useEffect(() => {
-    return () => {
-      if (revealTimerRef.current !== null) {
-        window.clearInterval(revealTimerRef.current)
-      }
-    }
-  }, [])
-
-  // Simulate streaming is only active while words are still being revealed
-  const totalWords = countWords(displayText)
-  const revealComplete = revealedWordCount >= totalWords && totalWords > 0
-  const effectiveIsStreaming =
-    remoteStreamingActive || (_simulateStreaming && !revealComplete)
-  const assistantDisplayText = effectiveIsStreaming ? revealedText : displayText
-  const standaloneMarkdownDocument = useMemo(
-    () => extractStandaloneMarkdownFence(assistantDisplayText),
-    [assistantDisplayText],
-  )
-
-  useEffect(() => {
-    const totalWords = countWords(displayText)
-    const previousText = previousTextRef.current
-    const previousLength = previousTextLengthRef.current
-    const textGrew =
-      displayText.length > previousLength &&
-      displayText.startsWith(previousText)
-    const textChanged = displayText !== previousText
-
-    targetWordCountRef.current = totalWords
-    previousTextRef.current = displayText
-    previousTextLengthRef.current = displayText.length
-
-    if (!effectiveIsStreaming) {
-      if (revealTimerRef.current !== null) {
-        window.clearInterval(revealTimerRef.current)
-        revealTimerRef.current = null
-      }
-      setRevealedWordCount(totalWords)
-      return
-    }
-
-    if (textChanged && !textGrew) {
-      setRevealedWordCount(totalWords)
-      return
-    }
-
-    if (revealTimerRef.current !== null) {
-      return
-    }
-
-    // Don't start animation if already fully revealed
-    setRevealedWordCount((currentWordCount) => {
-      if (currentWordCount >= totalWords) {
-        return currentWordCount
-      }
-
-      function tick() {
-        setRevealedWordCount((currentWordCount) => {
-          const targetWordCount = targetWordCountRef.current
-          if (currentWordCount >= targetWordCount) {
-            if (revealTimerRef.current !== null) {
-              window.clearInterval(revealTimerRef.current)
-              revealTimerRef.current = null
-            }
-            return currentWordCount
-          }
-
-          const nextWordCount = Math.min(
-            targetWordCount,
-            currentWordCount + WORDS_PER_TICK,
-          )
-
-          if (
-            nextWordCount >= targetWordCount &&
-            revealTimerRef.current !== null
-          ) {
-            window.clearInterval(revealTimerRef.current)
-            revealTimerRef.current = null
-          }
-
-          return nextWordCount
-        })
-      }
-
-      revealTimerRef.current = window.setInterval(tick, TICK_INTERVAL_MS)
-      return currentWordCount
-    })
-  }, [displayText, effectiveIsStreaming])
-
-  useEffect(() => {
-    if (!effectiveIsStreaming) {
-      setRevealedText((currentText) =>
-        currentText === displayText ? currentText : displayText,
-      )
-      return
-    }
-
-    const boundaryIndex = getWordBoundaryIndex(displayText, revealedWordCount)
-    const nextRevealedText = displayText.slice(0, boundaryIndex)
-    setRevealedText((currentText) =>
-      currentText === nextRevealedText ? currentText : nextRevealedText,
-    )
-  }, [displayText, effectiveIsStreaming, revealedWordCount])
 
   const thinking =
     remoteStreamingActive && remoteStreamingThinking !== undefined
@@ -1540,14 +824,14 @@ function MessageItemComponent({
   }, [message.content])
   const hasInlineImages = inlineImages.length > 0
 
-  const hasText = displayText.length > 0
+  const hasText = fullText.length > 0
   const hasRevealedText = effectiveIsStreaming ? assistantDisplayText.length > 0 : hasText
   const canRetryMessage = isUser && (hasText || hasAttachments || hasInlineImages)
 
   // Get tool calls from this message (for assistant messages)
   const toolCalls = role === 'assistant' ? getToolCallsFromMessage(message) : []
   const embeddedStreamToolCalls = useMemo(() => {
-    const value = (message as any).__streamToolCalls
+    const value = message.__streamToolCalls
     if (!Array.isArray(value)) return []
     return value
       .map((entry: any) => ({
@@ -1624,7 +908,7 @@ function MessageItemComponent({
           parseToolNameFromMessageText(messageText)
         return {
           key:
-            (typeof (toolMessage as any).id === 'string' && (toolMessage as any).id) ||
+            (typeof toolMessage.id === 'string' && toolMessage.id) ||
             (typeof toolMessage.toolCallId === 'string' && toolMessage.toolCallId) ||
             `${toolType}-${index}`,
           type: toolType,
@@ -1856,7 +1140,7 @@ function MessageItemComponent({
         </div>
       )}
       {/* Narration messages (tool-call activity) — compact collapsible row */}
-      {!isUser && (message as any).__isNarration && hasText && (
+      {!isUser && message.__isNarration && hasText && (
         <div className="w-full max-w-[900px]">
           <details className="group/narration rounded-lg border border-primary-200/50 bg-primary-50/30 hover:bg-primary-50 dark:hover:bg-primary-800/50 transition-colors">
             <summary className="flex items-center gap-2 cursor-pointer select-none px-3 py-2 list-none [&::-webkit-details-marker]:hidden">
@@ -1864,8 +1148,8 @@ function MessageItemComponent({
                 <span className="text-xs">⚡</span>
               </span>
               <span className="text-xs font-medium truncate flex-1 text-primary-700">
-                {displayText.slice(0, 120)}
-                {displayText.length > 120 ? '...' : ''}
+                {fullText.slice(0, 120)}
+                {fullText.length > 120 ? '...' : ''}
               </span>
               <HugeiconsIcon
                 icon={ArrowDown01Icon}
@@ -1875,13 +1159,13 @@ function MessageItemComponent({
               />
             </summary>
             <div className="px-3 pb-3 pt-1 text-[13px] text-primary-600 whitespace-pre-wrap text-pretty max-h-[400px] overflow-y-auto">
-              {displayText}
+              {fullText}
             </div>
           </details>
         </div>
       )}
       {(hasText || hasAttachments || hasInlineImages || effectiveIsStreaming) &&
-        !(message as any).__isNarration && (
+        !message.__isNarration && (
           <Message className={cn('gap-2 md:gap-3', isUser ? 'flex-row-reverse' : '')}>
             {isUser ? (
               <UserAvatar
@@ -1911,89 +1195,14 @@ function MessageItemComponent({
                   : { background: 'var(--chat-user-bg)', borderColor: 'var(--chat-user-border)', color: 'var(--chat-user-foreground)' }
               }
             >
-              {hasAttachments && (
-                <div className="flex flex-wrap gap-2">
-                  {attachments.map((attachment) => {
-                    const source = attachmentSource(attachment)
-                    const ext = attachmentExtension(attachment)
-                    const imageAttachment = isImageAttachment(attachment)
-                    const markdownAttachment = isMarkdownAttachment(attachment)
-
-                    if (imageAttachment) {
-                      return (
-                        <a
-                          key={attachment.id}
-                          href={source}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block overflow-hidden rounded-lg border border-primary-200 hover:border-primary-400 transition-colors max-w-full"
-                        >
-                          <img
-                            src={source}
-                            alt={attachment.name || 'Attached image'}
-                            className="max-h-64 w-auto max-w-full object-contain"
-                            loading="lazy"
-                          />
-                        </a>
-                      )
-                    }
-
-                    if (markdownAttachment) {
-                      const mdContent = decodeAttachmentText(attachment)
-                      // Only render preview if actual content exists (base64 is stripped on history reload)
-                      if (mdContent.trim().length > 0) {
-                        return (
-                          <MarkdownAttachmentCard
-                            key={attachment.id || attachment.name || source}
-                            attachment={attachment}
-                          />
-                        )
-                      }
-                      // Fall through to generic attachment link
-                    }
-
-                    return (
-                      <a
-                        key={attachment.id}
-                        href={source}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex max-w-full items-center gap-2 rounded-xl border border-primary-200 bg-primary-50 px-3 py-2 text-sm text-primary-700 hover:border-primary-400"
-                      >
-                        <span>📄</span>
-                        <span className="truncate">{attachment.name || 'Attachment'}</span>
-                        <span className="rounded bg-primary-100 px-1.5 py-0.5 text-[10px] uppercase text-primary-600">
-                          {ext || 'file'}
-                        </span>
-                      </a>
-                    )
-                  })}
-                </div>
-              )}
-              {hasInlineImages && (
-                <div className="flex flex-wrap gap-2">
-                  {inlineImages.map((img) => (
-                    <a
-                      key={img.id}
-                      href={img.src}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block overflow-hidden rounded-lg border border-primary-200 hover:border-primary-400 transition-colors max-w-full"
-                    >
-                      <img
-                        src={img.src}
-                        alt="Shared image"
-                        className="max-h-64 w-auto max-w-full object-contain"
-                        loading="lazy"
-                      />
-                    </a>
-                  ))}
-                </div>
-              )}
+              <MessageAttachments
+                attachments={attachments}
+                inlineImages={inlineImages}
+              />
               {hasText &&
                 (isUser ? (
                   <span className="text-pretty">
-                    {displayText}
+                    {fullText}
                   </span>
                 ) : hasRevealedText ? (
                   <div className="relative">
@@ -2005,7 +1214,6 @@ function MessageItemComponent({
                         className={cn(
                           'text-primary-900 bg-transparent w-full text-pretty transition-all duration-100',
                           effectiveIsStreaming && 'chat-streaming-content',
-                          isUser && 'text-white',
                         )}
                       >
                         {assistantDisplayText}

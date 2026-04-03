@@ -4,6 +4,7 @@ import { json } from '@tanstack/react-start'
 import { isAuthenticated } from '@/server/auth-middleware'
 import { requireJsonContentType } from '@/server/rate-limit'
 import { createApproval, listApprovals, updateApprovalStatus } from '@/server/paperclip-approvals'
+import type { ApprovalStatus, ApprovalType, PaperclipRole } from '@/types/paperclip'
 
 export const Route = createFileRoute('/api/paperclip/approvals')({
   server: {
@@ -20,13 +21,13 @@ export const Route = createFileRoute('/api/paperclip/approvals')({
         if (csrf) return csrf
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
         if (body.approvalId) {
-          return json({ ok: true, approval: await updateApprovalStatus(String(body.approvalId), String(body.status) as any, typeof body.note === 'string' ? body.note : undefined) })
+          return json({ ok: true, approval: await updateApprovalStatus(String(body.approvalId), String(body.status) as ApprovalStatus, typeof body.note === 'string' ? body.note : undefined) })
         }
         return json({ ok: true, approval: await createApproval({
           projectId: String(body.projectId || ''),
           missionId: String(body.missionId || ''),
-          type: String(body.type || 'founder_strategy') as any,
-          requiredByRole: String(body.requiredByRole || 'founder') as any,
+          type: String(body.type || 'founder_strategy') as ApprovalType,
+          requiredByRole: String(body.requiredByRole || 'founder') as PaperclipRole | 'founder',
           rationale: String(body.rationale || ''),
           requestedDecision: typeof body.requestedDecision === 'string' ? body.requestedDecision : undefined,
           decisionOptions: Array.isArray(body.decisionOptions) ? body.decisionOptions.map(String) : undefined,

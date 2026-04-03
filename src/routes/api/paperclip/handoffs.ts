@@ -4,6 +4,7 @@ import { json } from '@tanstack/react-start'
 import { isAuthenticated } from '@/server/auth-middleware'
 import { requireJsonContentType } from '@/server/rate-limit'
 import { createHandoff, listHandoffs } from '@/server/paperclip-handoffs'
+import type { PaperclipRole } from '@/types/paperclip'
 
 export const Route = createFileRoute('/api/paperclip/handoffs')({
   server: {
@@ -24,15 +25,15 @@ export const Route = createFileRoute('/api/paperclip/handoffs')({
           handoff: await createHandoff({
             projectId: String(body.projectId || ''),
             missionId: String(body.missionId || ''),
-            fromRole: String(body.fromRole || 'research') as any,
-            toRole: String(body.toRole || 'ceo') as any,
+            fromRole: String(body.fromRole || 'research') as PaperclipRole,
+            toRole: String(body.toRole || 'ceo') as PaperclipRole | 'founder',
             summary: String(body.summary || ''),
             whatChanged: typeof body.whatChanged === 'string' ? body.whatChanged : undefined,
             decisions: Array.isArray(body.decisions) ? body.decisions.map(String) : [],
             blockers: Array.isArray(body.blockers) ? body.blockers.map(String) : [],
             nextSteps: Array.isArray(body.nextSteps) ? body.nextSteps.map(String) : [],
             openQuestions: Array.isArray(body.openQuestions) ? body.openQuestions.map(String) : [],
-            confidence: (body.confidence as any) || 'medium',
+            confidence: (body.confidence as 'low' | 'medium' | 'high' | undefined) ?? 'medium',
           }),
         })
       },

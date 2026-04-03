@@ -17,7 +17,7 @@ import {
   Search01Icon, Settings01Icon, Sun02Icon 
 } from '@hugeicons/core-free-icons'
 import { AnimatePresence, motion } from 'motion/react'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Link, useRouterState } from '@tanstack/react-router'
 import {
   CHAT_OPEN_SETTINGS_EVENT
@@ -147,8 +147,8 @@ export async function fetchWorkspaceStats(): Promise<WorkspaceStats | null> {
   }
 }
 
-export async function fetchWorkspaceProjectShortcuts(): Promise<Array<never>> {
-  return []
+export function fetchWorkspaceProjectShortcuts(): Promise<Array<never>> {
+  return Promise.resolve([])
 }
 
 function NavItem({
@@ -522,7 +522,7 @@ function ChatSidebarComponent({
   useEffect(() => {
     function handleOpenSettingsEvent(event: Event) {
       const detail = (event as CustomEvent<ChatOpenSettingsDetail>).detail
-      handleOpenSettings(detail?.section === 'appearance' ? 'appearance' : 'hermes')
+      handleOpenSettings(detail.section === 'appearance' ? 'appearance' : 'hermes')
     }
 
     window.addEventListener(CHAT_OPEN_SETTINGS_EVENT, handleOpenSettingsEvent)
@@ -534,22 +534,11 @@ function ChatSidebarComponent({
     }
   }, [handleOpenSettings])
 
-  // Platform-aware modifier key
-  const _mod = useMemo(
-    () =>
-      typeof navigator !== 'undefined' &&
-      /Mac|iPod|iPhone|iPad/.test(navigator.userAgent)
-        ? '⌘'
-        : 'Ctrl+',
-    [],
-  )
-
   // Route active states
   const isChatActive =
     pathname === '/' || pathname === '/new' || pathname.startsWith('/chat')
   const isNewSessionActive =
     pathname === '/new' || pathname.startsWith('/chat/new')
-  const _isSettingsActive = pathname === '/settings'
   const isSkillsActive = pathname.startsWith('/skills')
   const isFilesActive = pathname.startsWith('/files')
   const isTerminalActive = pathname.startsWith('/terminal')
@@ -572,8 +561,6 @@ function ChatSidebarComponent({
 
   const mainNav = getLastRoute('main') || '/chat'
   const knowledgeNav = getLastRoute('knowledge') || '/memory'
-  const _systemNav = getLastRoute('system') || '/settings'
-
   const transition = {
     duration: 0.15,
     ease: isCollapsed ? 'easeIn' : 'easeOut',

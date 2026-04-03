@@ -7,8 +7,6 @@ import {
   useState,
 } from 'react'
 import {
-  ArrowExpand01Icon,
-  ArrowUp01Icon,
   Robot01Icon,
 } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -19,7 +17,7 @@ import {
 } from '../utils'
 import { MessageItem } from './message-item'
 import { ScrollToBottomButton } from './scroll-to-bottom-button'
-import { ResearchCard } from './research-card'
+import { ThinkingBubble } from './message-tool-section'
 import type { ChatMessage } from '../types'
 import type { UseResearchCardResult } from '@/hooks/use-research-card'
 import {
@@ -27,10 +25,10 @@ import {
   ChatContainerRoot,
   ChatContainerScrollAnchor,
 } from '@/components/prompt-kit/chat-container'
-import { AssistantAvatar } from '@/components/avatars'
 import { cn } from '@/lib/utils'
 import { hapticTap } from '@/lib/haptics'
 import { CHAT_OPEN_MESSAGE_SEARCH_EVENT } from '@/screens/chat/chat-events'
+import { useChatScrollBehavior } from '../hooks/use-chat-scroll-behavior'
 
 /** Duration (ms) the thinking indicator stays visible after waitingForResponse
  *  clears, giving the first response message time to render before the
@@ -39,345 +37,6 @@ import { CHAT_OPEN_MESSAGE_SEARCH_EVENT } from '@/screens/chat/chat-events'
  *  bridges the gap until the first tool/text event arrives. */
 const THINKING_GRACE_PERIOD_MS = 300
 
-/** Map tool names to human-readable status strings */
-const TOOL_STATUS_MAP: Record<string, string> = {
-  memory_search: 'Searching memory…',
-  memory_get: 'Searching memory…',
-  web_search: 'Searching the web…',
-  web_fetch: 'Reading page…',
-  cron: 'Managing schedules…',
-  message: 'Sending message…',
-  gateway: 'Managing gateway…',
-  canvas: 'Rendering canvas…',
-  voice_call: 'Making call…',
-  pdf: 'Reading PDF…',
-  todo: 'Managing tasks…',
-  Read: 'Reading file…',
-  read: 'Reading file…',
-  Write: 'Writing file…',
-  write: 'Writing file…',
-  Edit: 'Writing file…',
-  edit: 'Writing file…',
-  exec: 'Running code…',
-  sessions_spawn: 'Spawning agent…',
-  sessions_history: 'Checking sessions…',
-  sessions_list: 'Checking sessions…',
-  browser: 'Browsing web…',
-  image: 'Analyzing image…',
-  tts: 'Generating audio…',
-}
-
-function getToolStatusLabel(toolName: string): string {
-  return TOOL_STATUS_MAP[toolName] ?? 'Working…'
-}
-
-const TOOL_EMOJIS: Record<string, string> = {
-  web_search: '🔍', search: '🔍', search_files: '🔍', session_search: '🔍',
-  web_fetch: '🌐',
-  terminal: '💻', exec: '💻', shell: '💻', bash: '💻',
-  Read: '📖', read: '📖', read_file: '📖', file_read: '📖',
-  pdf: '📄',
-  Write: '✏️', write: '✏️', write_file: '✏️', edit: '✏️', Edit: '✏️',
-  memory: '🧠', memory_search: '🧠', memory_get: '🧠', save_memory: '🧠',
-  browser: '🌐', browser_navigate: '🌐', navigate: '🌐',
-  image: '🖼️', vision: '🖼️',
-  skill: '📦', skill_view: '📦', skill_load: '📦',
-  delegate: '🤖', spawn: '🤖', subagents: '🤖', agents_list: '🤖',
-  todo: '✅', cron: '⏰', message: '💬',
-  voice_call: '📞', canvas: '🎨', nodes: '📱', gateway: '⚙️',
-  lcm_grep: '🔍', lcm_expand: '🔍', lcm_describe: '🔍', lcm_expand_query: '🔍',
-  sessions_send: '📤', session_status: '📊', sessions_yield: '⏸️',
-  tts: '🗣️',
-}
-
-function getToolEmoji(name: string): string {
-  if (TOOL_EMOJIS[name]) return TOOL_EMOJIS[name]
-  if (name.includes('search')) return '🔍'
-  if (name.includes('read') || name.includes('Read')) return '📖'
-  if (name.includes('write') || name.includes('Write') || name.includes('edit')) return '✏️'
-  if (name.includes('exec') || name.includes('terminal')) return '💻'
-  if (name.includes('memory')) return '🧠'
-  if (name.includes('browser')) return '🌐'
-  if (name.includes('skill')) return '📦'
-  return '⚡'
-}
-
-function getToolVerb(name: string): string {
-  if (name.includes('search')) return 'Searching'
-  if (name.includes('read') || name.includes('Read')) return 'Reading'
-  if (name.includes('write') || name.includes('Write') || name.includes('edit')) return 'Writing'
-  if (name.includes('exec') || name.includes('terminal')) return 'Executing'
-  if (name.includes('memory')) return 'Remembering'
-  if (name.includes('browser')) return 'Browsing'
-  if (name.includes('skill')) return 'Loading skill'
-  return 'Working'
-}
-
-function ToolCallCard({ name, phase }: { name: string; phase: string }) {
-  const isDone = phase === 'done' || phase === 'complete' || phase === 'completed'
-  const isError = phase === 'error' || phase === 'failed'
-  const isRunning = !isDone && !isError
-
-  const [elapsed, setElapsed] = useState(0)
-  useEffect(() => {
-    if (!isRunning) return
-    setElapsed(0)
-    const id = window.setInterval(() => setElapsed((s) => s + 1), 1000)
-    return () => window.clearInterval(id)
-  }, [isRunning])
-
-  const [dots, setDots] = useState(0)
-  useEffect(() => {
-    if (!isRunning) return
-    const id = window.setInterval(() => setDots((d) => (d + 1) % 4), 400)
-    return () => window.clearInterval(id)
-  }, [isRunning])
-
-  const elapsedLabel = elapsed >= 60 ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s` : `${elapsed}s`
-  const emoji = getToolEmoji(name)
-  const verb = getToolVerb(name)
-  const displayName = name.replace(/_/g, ' ')
-
-  return (
-    <div
-      className="rounded-lg border border-primary-200 bg-primary-50 text-[11px] overflow-hidden"
-      style={{
-        borderLeftWidth: '3px',
-        borderLeftColor: isRunning ? '#6366f1' : isDone ? '#22c55e' : '#ef4444',
-        boxShadow: isRunning ? '0 0 8px rgba(99,102,241,0.12)' : 'none',
-      }}
-    >
-      <div className="flex items-center gap-1.5 px-2.5 py-1.5">
-        <span className="text-sm leading-none">{emoji}</span>
-        <span className="font-mono font-semibold text-ink">{displayName}</span>
-        <span className="flex-1" />
-        {isRunning && <span className="text-[10px] tabular-nums text-primary-400">{elapsedLabel}</span>}
-        {isDone && <span className="text-xs text-green-500">✅</span>}
-        {isError && <span className="text-xs text-red-500">❌</span>}
-        {isRunning && <span className="size-1.5 rounded-full animate-pulse bg-indigo-500" />}
-      </div>
-      {isRunning && (
-        <div className="px-2.5 pb-1.5 text-[10px] text-primary-400">
-          {verb}{'.'.repeat(dots)}
-        </div>
-      )}
-    </div>
-  )
-}
-
-type ThinkingBubbleProps = {
-  activeToolCalls?: Array<{ id: string; name: string; phase: string }>
-  liveToolActivity?: Array<{ name: string; timestamp: number }>
-  researchCard?: UseResearchCardResult
-  isCompacting?: boolean
-}
-
-/**
- * Premium shimmer thinking bubble — matches the assistant message position
- * with three bouncing dots, a gradient shimmer sweep, and a dynamic status
- * label that reflects what's actually happening (tool calls, etc.).
- */
-function ThinkingBubble({
-  activeToolCalls = [],
-  liveToolActivity = [],
-  researchCard,
-  isCompacting = false,
-}: ThinkingBubbleProps) {
-  const allTools = useMemo(
-    () =>
-      liveToolActivity.length > 0
-        ? liveToolActivity.map((t) => ({ name: t.name, phase: 'calling' as const }))
-        : activeToolCalls.map((t) => ({ name: t.name, phase: t.phase })),
-    [activeToolCalls, liveToolActivity],
-  )
-
-  // Derive the most recent active tool name
-  const activeToolName = useMemo(() => {
-    // liveToolActivity is ordered newest-first
-    if (liveToolActivity.length > 0) return liveToolActivity[0].name
-    // activeToolCalls: prefer 'calling'/'start' phase, fall back to most recent
-    const calling = activeToolCalls.find(
-      (tc) => tc.phase === 'calling' || tc.phase === 'start',
-    )
-    if (calling) return calling.name
-    if (activeToolCalls.length > 0) return activeToolCalls[activeToolCalls.length - 1].name
-    return null
-  }, [activeToolCalls, liveToolActivity])
-
-  const statusLabel = isCompacting
-    ? 'Compacting context...'
-    : activeToolName
-      ? getToolStatusLabel(activeToolName)
-      : 'Thinking…'
-
-  // Elapsed time counter — resets when the status label changes (new tool)
-  const [elapsed, setElapsed] = useState(0)
-  useEffect(() => {
-    setElapsed(0)
-    const interval = window.setInterval(() => setElapsed((s) => s + 1), 1000)
-    return () => window.clearInterval(interval)
-  }, [statusLabel])
-
-  const elapsedLabel = elapsed >= 60
-    ? `${Math.floor(elapsed / 60)}m ${elapsed % 60}s`
-    : `${elapsed}s`
-
-  const isStale = elapsed >= 30
-  const isVeryStale = elapsed >= 60
-  const canExpandResearch = Boolean(researchCard && researchCard.steps.length > 0)
-  const expandedResearchCard = canExpandResearch ? researchCard : null
-  const completedResearchSteps = researchCard
-    ? researchCard.steps.filter((step) => step.status === 'done').length
-    : 0
-
-  // Track displayed label with a small delay so we fade between changes
-  const [displayedLabel, setDisplayedLabel] = useState(statusLabel)
-  const [visible, setVisible] = useState(true)
-  const prevLabelRef = useRef(statusLabel)
-
-  useEffect(() => {
-    if (statusLabel === prevLabelRef.current) return
-    // Fade out, swap, fade in
-    setVisible(false)
-    const swapTimer = window.setTimeout(() => {
-      setDisplayedLabel(statusLabel)
-      prevLabelRef.current = statusLabel
-      setVisible(true)
-    }, 150)
-    return () => window.clearTimeout(swapTimer)
-  }, [statusLabel])
-
-  // When a tool is active, render grouped tool pill cards instead of shimmer bubble
-  if (allTools.length > 0 && !isCompacting) {
-    // Group consecutive same-name tools to avoid flooding the UI
-    const grouped: Array<{ name: string; phase: string; count: number }> = []
-    for (const tc of allTools) {
-      const last = grouped[grouped.length - 1]
-      if (last && last.name === tc.name) {
-        last.count++
-        // Keep the most "active" phase (running > complete > error)
-        if (tc.phase !== 'done' && tc.phase !== 'complete' && tc.phase !== 'completed') {
-          last.phase = tc.phase
-        }
-      } else {
-        grouped.push({ name: tc.name, phase: tc.phase, count: 1 })
-      }
-    }
-    return (
-      <div className="flex flex-col gap-1.5 max-w-sm animate-in fade-in duration-200">
-        {grouped.map((tc, i) => (
-          <div key={`${tc.name}-${i}`} className="relative">
-            <ToolCallCard name={tc.name} phase={tc.phase} />
-            {tc.count > 1 && (
-              <span className="absolute -top-1 -right-1 text-[9px] font-bold bg-indigo-500 text-white rounded-full size-5 flex items-center justify-center shadow-sm">
-                {tc.count}
-              </span>
-            )}
-          </div>
-        ))}
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-end gap-2">
-      {/* Avatar with pulsing glow ring */}
-      <div className="thinking-avatar-glow shrink-0 rounded-lg">
-        <AssistantAvatar size={28} />
-      </div>
-
-      {/* Chat bubble */}
-      <div className="relative overflow-hidden rounded-2xl rounded-bl-sm border border-primary-200 dark:border-primary-200/20 bg-primary-100 dark:bg-primary-100 thinking-shimmer-bubble">
-        {/* Shimmer overlay */}
-        <div className="thinking-shimmer-sweep pointer-events-none absolute inset-0" aria-hidden="true" />
-
-        <div className="relative flex flex-col gap-1 px-4 py-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5">
-                {isCompacting ? (
-                  <span
-                    className="inline-block size-3 rounded-full border border-primary-300 border-t-primary-500 animate-spin"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <>
-                    <span className="thinking-dot thinking-dot-1" />
-                    <span className="thinking-dot thinking-dot-2" />
-                    <span className="thinking-dot thinking-dot-3" />
-                  </>
-                )}
-                <span
-                  className={cn(
-                    'thinking-label ml-1.5 text-xs font-medium transition-opacity duration-300',
-                    isStale
-                      ? 'text-amber-500 dark:text-amber-400'
-                      : 'text-primary-500 dark:text-primary-500',
-                  )}
-                  style={{ opacity: visible ? 1 : 0 }}
-                >
-                  {displayedLabel}{' '}
-                  {elapsed >= 3 ? (
-                    <span className="text-[10px] opacity-60">{elapsedLabel}</span>
-                  ) : null}
-                </span>
-              </div>
-              {canExpandResearch ? (
-                <div className="mt-1 flex items-center gap-2 text-[11px] text-primary-500 dark:text-primary-400">
-                  <span>{completedResearchSteps}/{expandedResearchCard?.steps.length ?? 0} tools</span>
-                  <span aria-hidden="true" className="opacity-40">•</span>
-                  <span>{expandedResearchCard?.isActive ? 'Live timeline' : 'Timeline ready'}</span>
-                </div>
-              ) : null}
-            </div>
-            {canExpandResearch ? (
-              <button
-                type="button"
-                onClick={() => expandedResearchCard?.setCollapsed(!expandedResearchCard.collapsed)}
-                className="relative z-10 inline-flex size-7 shrink-0 items-center justify-center rounded-full border border-primary-200/80 bg-primary-50/90 text-primary-500 transition-colors hover:bg-primary-100 dark:border-primary-800 dark:bg-primary-900/80 dark:text-primary-300 dark:hover:bg-primary-800"
-                aria-label={expandedResearchCard?.collapsed ? 'Expand research timeline' : 'Collapse research timeline'}
-                title={expandedResearchCard?.collapsed ? 'Expand research timeline' : 'Collapse research timeline'}
-              >
-                <HugeiconsIcon
-                  icon={expandedResearchCard?.collapsed ? ArrowExpand01Icon : ArrowUp01Icon}
-                  size={14}
-                  strokeWidth={1.8}
-                />
-              </button>
-            ) : null}
-          </div>
-
-          {isStale ? (
-            <span className="text-[11px] text-amber-500 dark:text-amber-400 animate-pulse">
-              {isVeryStale ? 'Still working… this is taking a while' : 'Taking longer than usual…'}
-            </span>
-          ) : null}
-
-          {activeToolName && !isCompacting ? (
-            <div
-              style={{
-                opacity: visible ? 1 : 0,
-                transition: 'opacity 300ms ease',
-              }}
-            >
-              <span className="inline-flex items-center rounded-full bg-primary-200/60 dark:bg-primary-800/30 px-2 py-0.5 text-[10px] font-mono text-primary-400 dark:text-primary-500 select-none">
-                {activeToolName}
-              </span>
-            </div>
-          ) : null}
-        </div>
-
-        {expandedResearchCard && !expandedResearchCard.collapsed ? (
-          <ResearchCard researchCard={expandedResearchCard} />
-        ) : null}
-      </div>
-    </div>
-  )
-}
-
-const VIRTUAL_ROW_HEIGHT = 136
-const VIRTUAL_OVERSCAN = 8
-const NEAR_BOTTOM_THRESHOLD = 200
 // Pull-to-refresh constants removed
 
 const HIDDEN_SYSTEM_USER_SUBSTRINGS = [
@@ -415,10 +74,10 @@ function getChronologyRank(message: ChatMessage): number {
   const content = Array.isArray(message.content) ? message.content : []
   const hasToolCalls =
     content.some((part) => part.type === 'toolCall') ||
-    (Array.isArray((message as any).streamToolCalls) &&
-      (message as any).streamToolCalls.length > 0) ||
-    (Array.isArray((message as any).__streamToolCalls) &&
-      (message as any).__streamToolCalls.length > 0)
+    (Array.isArray(message.streamToolCalls) &&
+      message.streamToolCalls.length > 0) ||
+    (Array.isArray(message.__streamToolCalls) &&
+      message.__streamToolCalls.length > 0)
 
   if (role === 'user') return 0
   if (role === 'assistant' && hasToolCalls) return 1
@@ -441,14 +100,8 @@ function sortMessagesChronologically(
       const rightRank = getChronologyRank(right.message)
       if (leftRank !== rightRank) return leftRank - rightRank
 
-      const leftHistoryIndex =
-        typeof (left.message as any).__historyIndex === 'number'
-          ? (left.message as any).__historyIndex
-          : undefined
-      const rightHistoryIndex =
-        typeof (right.message as any).__historyIndex === 'number'
-          ? (right.message as any).__historyIndex
-          : undefined
+      const leftHistoryIndex = left.message.__historyIndex
+      const rightHistoryIndex = right.message.__historyIndex
       if (
         leftHistoryIndex !== undefined &&
         rightHistoryIndex !== undefined &&
@@ -457,14 +110,8 @@ function sortMessagesChronologically(
         return leftHistoryIndex - rightHistoryIndex
       }
 
-      const leftRealtimeSequence =
-        typeof (left.message as any).__realtimeSequence === 'number'
-          ? (left.message as any).__realtimeSequence
-          : undefined
-      const rightRealtimeSequence =
-        typeof (right.message as any).__realtimeSequence === 'number'
-          ? (right.message as any).__realtimeSequence
-          : undefined
+      const leftRealtimeSequence = left.message.__realtimeSequence
+      const rightRealtimeSequence = right.message.__realtimeSequence
       if (
         leftRealtimeSequence !== undefined &&
         rightRealtimeSequence !== undefined &&
@@ -489,13 +136,6 @@ type DisplayEntry = {
   attachedToolMessages: Array<ChatMessage>
 }
 
-function escapeAttributeSelector(value: string): string {
-  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
-    return CSS.escape(value)
-  }
-
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-}
 
 type ChatMessageListProps = {
   messages: Array<ChatMessage>
@@ -563,19 +203,23 @@ function ChatMessageListComponent({
   isCompacting = false,
   sending = false,
 }: ChatMessageListProps) {
-  const anchorRef = useRef<HTMLDivElement | null>(null)
+  const {
+    anchorRef,
+    isNearBottom,
+    isNearBottomRef,
+    stickToBottomRef,
+    scrollToBottom,
+    handleUserScroll,
+    setIsNearBottom,
+  } = useChatScrollBehavior()
   const lastUserRef = useRef<HTMLDivElement | null>(null)
   const searchInputRef = useRef<HTMLInputElement | null>(null)
   const prevSessionKeyRef = useRef<string | undefined>(sessionKey)
-  const stickToBottomRef = useRef(true)
   const messageSignatureRef = useRef<Map<string, string>>(new Map())
   const initialRenderRef = useRef(true)
   const streamingTargetsClearRef = useRef<(() => void) | null>(null)
   const [streamingCleared, setStreamingCleared] = useState(0)
   streamingTargetsClearRef.current = () => setStreamingCleared((c) => c + 1)
-  const lastScrollTopRef = useRef(0)
-  const isNearBottomRef = useRef(true)
-  const [isNearBottom, setIsNearBottom] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const [expandAllToolSections, setExpandAllToolSections] = useState(false)
 
@@ -625,41 +269,6 @@ function ChatMessageListComponent({
     }
   }, [contentStyle, isMobileViewport])
 
-  // Simple scroll handler — only tracks if user is near bottom via refs (no state updates)
-  const handleUserScroll = useCallback(function handleUserScroll(metrics: {
-    scrollTop: number
-    scrollHeight: number
-    clientHeight: number
-  }) {
-    const distanceFromBottom =
-      metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight
-    const nearBottom = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD
-    const wasScrollingUp = metrics.scrollTop < lastScrollTopRef.current - 5
-    lastScrollTopRef.current = metrics.scrollTop
-
-    if (wasScrollingUp && !nearBottom) {
-      stickToBottomRef.current = false
-      isNearBottomRef.current = false
-    } else if (nearBottom) {
-      stickToBottomRef.current = true
-      isNearBottomRef.current = true
-    }
-  }, [])
-
-  // Simple scroll to bottom — find viewport and scroll
-  const scrollToBottom = useCallback(function scrollToBottom(
-    behavior: ScrollBehavior = 'auto',
-  ) {
-    const anchor = anchorRef.current
-    if (!anchor) return
-    const viewport = anchor.closest(
-      '[data-chat-scroll-viewport]',
-    )
-    if (viewport) {
-      viewport.scrollTo({ top: viewport.scrollHeight, behavior })
-    }
-  }, [])
-
   // Filter messages — toolResult handled by grouping into assistant bubble below
   const displayMessages = useMemo(() => {
     const filteredMessages = messages.filter((msg) => {
@@ -683,11 +292,11 @@ function ChatMessageListComponent({
           .join('')
           .trim()
         const hasAttachments =
-          Array.isArray((msg as any).attachments) && (msg as any).attachments.length > 0
+          Array.isArray(msg.attachments) && msg.attachments.length > 0
         const hasInlineImages =
-          Array.isArray((msg as any).inlineImages) && (msg as any).inlineImages.length > 0
+          Array.isArray(msg.inlineImages) && msg.inlineImages.length > 0
         const isPendingOptimisticUserMessage =
-          typeof (msg as any).__optimisticId === 'string' ||
+          typeof msg.__optimisticId === 'string' ||
           msg.status === 'sending' ||
           msg.status === 'queued'
 
@@ -723,12 +332,12 @@ function ChatMessageListComponent({
     const seenMessageIds = new Set<string>()
     const deduped = filteredMessages.filter((message) => {
       const messageId =
-        (message as any).id ||
-        (message as any).messageId ||
-        (message as any).clientId ||
-        (message as any).client_id ||
-        (message as any).nonce ||
-        (message as any).__optimisticId
+        message.id ||
+        message.messageId ||
+        message.clientId ||
+        message.client_id ||
+        message.nonce ||
+        message.__optimisticId
       if (typeof messageId !== 'string' || messageId.trim().length === 0) {
         return true
       }
@@ -747,7 +356,7 @@ function ChatMessageListComponent({
       // Group both 'tool' and 'toolResult' roles into the preceding assistant bubble
       if (message.role === 'tool' || message.role === 'toolResult') {
         const previousEntry = entries[entries.length - 1]
-        if (previousEntry?.message.role === 'assistant') {
+        if (previousEntry.message.role === 'assistant') {
           previousEntry.attachedToolMessages.push(message)
         }
         return
@@ -859,8 +468,6 @@ function ChatMessageListComponent({
     [messageSearchMatches],
   )
 
-  const activeSearchMatch = messageSearchMatches[activeSearchMatchIndex] ?? null
-
   const focusSearchInput = useCallback(function focusSearchInput() {
     window.requestAnimationFrame(function focusSearchInputField() {
       searchInputRef.current?.focus()
@@ -905,29 +512,6 @@ function ChatMessageListComponent({
     },
     [messageSearchMatches.length],
   )
-
-  const scrollToMessageById = useCallback(function scrollToMessageById(
-    messageId: string,
-    behavior: ScrollBehavior = 'smooth',
-  ) {
-    const anchor = anchorRef.current
-    if (!anchor) return
-
-    const viewport = anchor.closest(
-      '[data-chat-scroll-viewport]',
-    )
-    if (!viewport) return
-
-    const escapedMessageId = escapeAttributeSelector(messageId)
-    const selector = `[data-chat-message-id="${escapedMessageId}"]`
-    const target = viewport.querySelector(selector)
-    if (!target) return
-
-    stickToBottomRef.current = false
-    isNearBottomRef.current = false
-    setIsNearBottom(false)
-    target.scrollIntoView({ behavior, block: 'center', inline: 'nearest' })
-  }, [])
 
   const toolResultsByCallId = useMemo(() => {
     const map = new Map<string, ChatMessage>()
@@ -1068,8 +652,8 @@ function ChatMessageListComponent({
     // If streaming has visible text, hide indicator — response is rendering
     if (isStreaming && streamingText && streamingText.length > 0) return false
     const lastEntry = visibleEntries[visibleEntries.length - 1]
-    const lastMessage = lastEntry?.message
-    if (lastMessage && lastMessage.role === 'assistant') {
+    const lastMessage = lastEntry.message
+    if (lastMessage.role === 'assistant') {
       const lastId = getStableMessageId(lastMessage, lastEntry.sourceIndex)
       const isBeingTypewritten = streamingState.streamingTargets.has(lastId)
       if (isBeingTypewritten) return false
@@ -1126,40 +710,17 @@ function ChatMessageListComponent({
   const shouldVirtualize = false // Disabled — causes scroll glitches
 
   const virtualRange = useMemo(() => {
-    if (!shouldVirtualize || scrollMetrics.clientHeight <= 0) {
-      return {
-        startIndex: 0,
-        endIndex: visibleEntries.length,
-        topSpacerHeight: 0,
-        bottomSpacerHeight: 0,
-      }
-    }
-
-    const startIndex = Math.max(
-      0,
-      Math.floor(scrollMetrics.scrollTop / VIRTUAL_ROW_HEIGHT) -
-        VIRTUAL_OVERSCAN,
-    )
-    const visibleCount = Math.ceil(
-      scrollMetrics.clientHeight / VIRTUAL_ROW_HEIGHT,
-    )
-    const endIndex = Math.min(
-      visibleEntries.length,
-      startIndex + visibleCount + VIRTUAL_OVERSCAN * 2,
-    )
-
     return {
-      startIndex,
-      endIndex,
-      topSpacerHeight: startIndex * VIRTUAL_ROW_HEIGHT,
-      bottomSpacerHeight:
-        (visibleEntries.length - endIndex) * VIRTUAL_ROW_HEIGHT,
+      startIndex: 0,
+      endIndex: visibleEntries.length,
+      topSpacerHeight: 0,
+      bottomSpacerHeight: 0,
     }
   }, [scrollMetrics, shouldVirtualize, visibleEntries.length])
 
   function isMessageStreaming(message: ChatMessage, index: number) {
     if (!isStreaming || !streamingMessageId) return false
-    const messageId = message.__optimisticId || (message as any).id
+    const messageId = message.__optimisticId || message.id
     return (
       messageId === streamingMessageId ||
       (message.role === 'assistant' && index === lastAssistantIndex)
@@ -1239,11 +800,11 @@ function ChatMessageListComponent({
                   ? 'bg-amber-50/30'
                   : undefined
             }
-            toolCalls={messageIsStreaming ? normalizedStreamingToolCalls : undefined}
+            toolCalls={normalizedStreamingToolCalls}
             isStreaming={messageIsStreaming}
             streamingText={streamingText}
-            streamingThinking={messageIsStreaming ? streamingThinking : undefined}
-            lifecycleEvents={messageIsStreaming ? lifecycleEvents : undefined}
+            streamingThinking={streamingThinking}
+            lifecycleEvents={lifecycleEvents}
             simulateStreaming={simulateStreaming}
             streamingKey={signature}
             expandAllToolSections={expandAllToolSections}
@@ -1269,28 +830,17 @@ function ChatMessageListComponent({
               ? 'bg-amber-50/30'
               : undefined
         }
-        toolCalls={messageIsStreaming ? normalizedStreamingToolCalls : undefined}
+        toolCalls={undefined}
         isStreaming={messageIsStreaming}
-        streamingText={messageIsStreaming ? streamingText : undefined}
-        streamingThinking={messageIsStreaming ? streamingThinking : undefined}
-        lifecycleEvents={messageIsStreaming ? lifecycleEvents : undefined}
+        streamingText={undefined}
+        streamingThinking={undefined}
+        lifecycleEvents={undefined}
         simulateStreaming={simulateStreaming}
         streamingKey={signature}
         expandAllToolSections={expandAllToolSections}
       />
     )
   }
-
-  // Sync near-bottom ref to state every 500ms for button visibility
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setIsNearBottom((prev) => {
-        const current = isNearBottomRef.current
-        return prev === current ? prev : current
-      })
-    }, 500)
-    return () => window.clearInterval(timer)
-  }, [])
 
   // Simple: scroll to bottom when messages change and we should stick
   useEffect(() => {
@@ -1312,7 +862,7 @@ function ChatMessageListComponent({
     if (isNearBottomRef.current) {
       // Use smooth scroll only when user is near bottom (<200px) and new messages arrive;
       // use instant scroll during streaming to avoid choppiness.
-      const behavior: ScrollBehavior = isNearBottomRef.current && !isStreaming ? 'smooth' : 'auto'
+      const behavior: ScrollBehavior = !isStreaming ? 'smooth' : 'auto'
       frameId = window.requestAnimationFrame(() => scrollToBottom(behavior))
     }
 
@@ -1440,20 +990,6 @@ function ChatMessageListComponent({
       return Math.min(currentIndex, messageSearchMatches.length - 1)
     })
   }, [isMessageSearchActive, messageSearchMatches.length])
-
-  useEffect(() => {
-    if (!activeSearchMatch) return
-
-    const frameId = window.requestAnimationFrame(
-      function scrollToActiveMatch() {
-        scrollToMessageById(activeSearchMatch.stableId, 'smooth')
-      },
-    )
-
-    return () => {
-      window.cancelAnimationFrame(frameId)
-    }
-  }, [activeSearchMatch, scrollToMessageById])
 
   const handleScrollToBottom = useCallback(
     function handleScrollToBottom() {
@@ -1727,23 +1263,11 @@ function ChatMessageListComponent({
             </>
           ) : (
             <>
-              {shouldVirtualize && virtualRange.topSpacerHeight > 0 ? (
-                <div
-                  aria-hidden="true"
-                  style={{ height: `${virtualRange.topSpacerHeight}px` }}
-                />
-              ) : null}
               {visibleEntries
                 .slice(virtualRange.startIndex, virtualRange.endIndex)
                 .map((entry, index) =>
                   renderMessage(entry, virtualRange.startIndex + index),
                 )}
-              {shouldVirtualize && virtualRange.bottomSpacerHeight > 0 ? (
-                <div
-                  aria-hidden="true"
-                  style={{ height: `${virtualRange.bottomSpacerHeight}px` }}
-                />
-              ) : null}
             </>
           )}
           {showTypingIndicator ||
@@ -1795,7 +1319,7 @@ function getToolGroupClass(
   index: number,
 ): string {
   const message = messages[index]
-  if (!message || message.role !== 'assistant') return ''
+  if (message.role !== 'assistant') return ''
   const hasToolCalls = getToolCallsFromMessage(message).length > 0
   if (!hasToolCalls) return ''
 
@@ -1840,11 +1364,11 @@ function getStableMessageId(message: ChatMessage, index: number): string {
 
 function getRawMessageTimestamp(message: ChatMessage): number | null {
   const candidates = [
-    (message as any).createdAt,
-    (message as any).created_at,
-    (message as any).timestamp,
-    (message as any).time,
-    (message as any).ts,
+    message.createdAt,
+    message.created_at,
+    message.timestamp,
+    message.time,
+    message.ts,
   ]
   for (const candidate of candidates) {
     if (typeof candidate === 'number' && Number.isFinite(candidate)) {

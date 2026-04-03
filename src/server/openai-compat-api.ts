@@ -1,4 +1,7 @@
 import { HERMES_API } from './gateway-capabilities'
+import { createLogger } from './logger'
+
+const log = createLogger('openai-compat-api')
 
 /** Optional bearer token for authenticated OpenAI-compatible endpoints (e.g. Codex OAuth). */
 const BEARER_TOKEN = process.env.HERMES_API_TOKEN || ''
@@ -25,7 +28,9 @@ async function getDefaultModel(): Promise<string> {
         return _cachedDefaultModel
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    log.warn('Failed to fetch default model from /v1/models', { error: String(err) })
+  }
   return 'default'
 }
 
@@ -84,7 +89,7 @@ async function* parseOpenAIStream(
   const decoder = new TextDecoder()
   let buffer = ''
 
-  while (true) {
+  for (;;) {
     const { done, value } = await reader.read()
     if (done) break
 

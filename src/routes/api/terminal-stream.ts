@@ -1,6 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { requireLocalOrAuth } from '../../server/auth-middleware'
 import { createTerminalSession } from '../../server/terminal-sessions'
+import { createLogger } from '../../server/logger'
+
+const log = createLogger('terminal-stream')
 import {
   getClientIp,
   rateLimit,
@@ -76,10 +79,7 @@ export const Route = createFileRoute('/api/terminal-stream')({
                 rows,
               })
             } catch (error) {
-              if (import.meta.env.DEV) console.error(
-                '[terminal-stream] Failed to create session:',
-                error,
-              )
+              log.error('Failed to create terminal session', { error: String(error) })
               send('error', { message: String(error) })
               try {
                 controller.close()

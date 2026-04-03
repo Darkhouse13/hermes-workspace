@@ -1,5 +1,8 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
+import { createLogger } from './logger'
+
+const log = createLogger('paperclip-store')
 
 export async function ensureDir(dirPath: string): Promise<void> {
   await fs.mkdir(dirPath, { recursive: true })
@@ -12,7 +15,8 @@ export async function readJsonOrDefault<T>(
   try {
     const content = await fs.readFile(filePath, 'utf-8')
     return JSON.parse(content) as T
-  } catch {
+  } catch (err) {
+    log.debug('Failed to read/parse JSON file, using fallback', { file: filePath, error: String(err) })
     return fallback
   }
 }

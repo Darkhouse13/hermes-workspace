@@ -41,6 +41,20 @@ export type ChatAttachment = {
   height?: number
 }
 
+export type StreamToolCall = {
+  id: string
+  name: string
+  phase: 'calling' | 'running' | 'done' | 'error'
+  args?: unknown
+  result?: string
+}
+
+export type ExecNotification = {
+  name: string
+  exitCode: number | null
+  ok: boolean | null
+}
+
 export type StreamingStatus = 'idle' | 'streaming' | 'complete' | 'error'
 
 export type ChatMessage = {
@@ -53,10 +67,32 @@ export type ChatMessage = {
   isError?: boolean
   timestamp?: number
   [key: string]: unknown
+
+  // Client-side identity & tracking
   __optimisticId?: string
+  clientId?: string
+  client_id?: string
+  clientNonce?: string
+  nonce?: string
+  status?: string
+
+  // Streaming state
   __streamingStatus?: StreamingStatus
   __streamingText?: string
   __streamingThinking?: string
+  __streamToolCalls?: StreamToolCall[]
+  streamToolCalls?: StreamToolCall[]
+
+  // Message metadata
+  __execNotification?: ExecNotification
+  __isNarration?: boolean
+  __historyIndex?: number
+  __realtimeSequence?: number
+  __receiveTime?: number
+  __realtimeSource?: string
+
+  // Inline image content blocks
+  inlineImages?: Array<{ type: string; source: { data: string; media_type: string } }>
 }
 
 export type SessionTitleStatus = 'idle' | 'generating' | 'ready' | 'error'

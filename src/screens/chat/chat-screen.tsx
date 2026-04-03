@@ -23,7 +23,6 @@ import {
   fetchStatus,
   updateHistoryMessageByClientId,
   updateHistoryMessageByClientIdEverywhere,
-  updateSessionLastMessage,
 } from './chat-queries'
 import { ChatHeader } from './components/chat-header'
 import { ChatMessageList } from './components/chat-message-list'
@@ -48,7 +47,8 @@ import { useChatSessions } from './hooks/use-chat-sessions'
 import { useAutoSessionTitle } from './hooks/use-auto-session-title'
 import { useRenameSession } from './hooks/use-rename-session'
 import { useContextAlert } from './hooks/use-context-alert'
-import { ContextBar } from './components/context-bar'
+import { useChatSendMessage } from './hooks/use-chat-send-message'
+import { useChatDisplayMessages } from './hooks/use-chat-display-messages'
 import {
   CHAT_OPEN_SETTINGS_EVENT,
   CHAT_PENDING_COMMAND_STORAGE_KEY,
@@ -69,7 +69,9 @@ import {
   loadApprovals,
   saveApprovals,
 } from '@/lib/approvals-store'
-import { stripQueuedWrapper } from '@/lib/strip-queued-wrapper'
+import {
+  normalizeMessageValue,
+} from '@/lib/chat-content-normalization'
 import { cn } from '@/lib/utils'
 import { toast } from '@/components/ui/toast'
 import { hapticTap } from '@/lib/haptics'
@@ -111,39 +113,6 @@ type PortableHistoryMessage = {
   content: string
 }
 
-function normalizeMimeType(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  return value.trim().toLowerCase()
-}
-
-function isImageMimeType(value: unknown): boolean {
-  const normalized = normalizeMimeType(value)
-  return normalized.startsWith('image/')
-}
-
-function readDataUrlMimeType(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  const match = /^data:([^;,]+)[^,]*,/i.exec(value.trim())
-  return match?.[1]?.trim().toLowerCase() || ''
-}
-
-function stripDataUrlPrefix(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  const trimmed = value.trim()
-  if (!trimmed) return ''
-  const commaIndex = trimmed.indexOf(',')
-  if (trimmed.toLowerCase().startsWith('data:') && commaIndex >= 0) {
-    return trimmed.slice(commaIndex + 1).trim()
-  }
-  return trimmed
-}
-
-function normalizeMessageValue(value: unknown): string {
-  if (typeof value !== 'string') return ''
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : ''
-}
-
 function getPortableHistoryContent(message: ChatMessage): string {
   const text = textFromMessage(message).trim()
   if (text) return text
@@ -158,7 +127,7 @@ function buildPortableHistory(messages: Array<ChatMessage>): Array<PortableHisto
     .filter((message): message is ChatMessage & { role: 'user' | 'assistant' | 'system' } => (
       message.role === 'user' || message.role === 'assistant' || message.role === 'system'
     ))
-    .filter((message) => (message as any).__streamingStatus !== 'streaming')
+    .filter((message) => message.__streamingStatus !== 'streaming')
     .map((message) => {
       const content = getPortableHistoryContent(message)
       if (!content) return null
@@ -193,7 +162,7 @@ function exportConversationTranscript(payload: {
       const text = textFromMessage(message).trim()
       const attachments = Array.isArray(message.attachments)
         ? message.attachments
-            .map((attachment) => attachment?.name?.trim())
+            .map((attachment) => attachment.name?.trim())
             .filter((value): value is string => Boolean(value))
         : []
 
@@ -221,47 +190,6 @@ function exportConversationTranscript(payload: {
   link.remove()
   window.setTimeout(() => URL.revokeObjectURL(url), 0)
   return true
-}
-
-function messageFallbackSignature(message: ChatMessage): string {
-  const raw = message as Record<string, unknown>
-  const timestamp = normalizeMessageValue(
-    typeof raw.timestamp === 'number' ? String(raw.timestamp) : raw.timestamp,
-  )
-
-  const contentParts = Array.isArray(message.content)
-    ? message.content
-        .map((part: any) => {
-          if (part.type === 'text') {
-            return `t:${typeof part.text === 'string' ? part.text.trim() : ''}`
-          }
-          if (part.type === 'thinking') {
-            return `th:${typeof (part).thinking === 'string' ? (part).thinking : ''}`
-          }
-          if (part.type === 'toolCall') {
-            const toolPart = part
-            return `tc:${toolPart.id ?? ''}:${toolPart.name ?? ''}`
-          }
-          return `p:${(part).type ?? ''}`
-        })
-        .join('|')
-    : ''
-
-  const attachments = Array.isArray(message.attachments)
-    ? message.attachments
-        .map((attachment) => {
-          const name = typeof attachment?.name === 'string' ? attachment.name : ''
-          const size = typeof attachment?.size === 'number' ? String(attachment.size) : ''
-          const type =
-            typeof attachment?.contentType === 'string'
-              ? attachment.contentType
-              : ''
-          return `${name}:${size}:${type}`
-        })
-        .join('|')
-    : ''
-
-  return `${message.role ?? 'unknown'}:${timestamp}:${contentParts}:${attachments}`
 }
 
 function getMessageClientId(message: ChatMessage): string {
@@ -317,103 +245,6 @@ function getMessageRetryAttachments(
   return message.attachments.filter((attachment) => {
     return Boolean(attachment) && typeof attachment === 'object'
   })
-}
-
-function getMessageStatusValue(message: ChatMessage): string {
-  return normalizeMessageValue((message as Record<string, unknown>).status)
-}
-
-function getMessageTimestampValue(message: ChatMessage): number | null {
-  const raw = message as Record<string, unknown>
-  const candidates = [
-    raw.timestamp,
-    raw.__createdAt,
-    raw.createdAt,
-    raw.created_at,
-  ]
-
-  for (const candidate of candidates) {
-    if (typeof candidate === 'number' && Number.isFinite(candidate)) {
-      return candidate < 1_000_000_000_000 ? candidate * 1000 : candidate
-    }
-    if (typeof candidate === 'string') {
-      const parsed = Date.parse(candidate)
-      if (!Number.isNaN(parsed)) return parsed
-    }
-  }
-
-  return null
-}
-
-function getMessageAttachmentSignature(message: ChatMessage): string {
-  if (!Array.isArray(message.attachments) || message.attachments.length === 0) {
-    return ''
-  }
-
-  return message.attachments
-    .map((attachment) => {
-      const name = typeof attachment?.name === 'string' ? attachment.name : ''
-      const size = typeof attachment?.size === 'number' ? String(attachment.size) : ''
-      const type =
-        typeof attachment?.contentType === 'string'
-          ? attachment.contentType
-          : ''
-      return `${name}:${size}:${type}`
-    })
-    .sort()
-    .join('|')
-}
-
-function isOptimisticUserMessage(message: ChatMessage): boolean {
-  const raw = message as Record<string, unknown>
-  return (
-    normalizeMessageValue(raw.__optimisticId).length > 0 ||
-    ['sending', 'sent', 'done'].includes(getMessageStatusValue(message))
-  )
-}
-
-function shouldCollapseTextDuplicate(
-  existing: ChatMessage,
-  candidate: ChatMessage,
-): boolean {
-  if (existing.role !== candidate.role) return false
-
-  if (candidate.role === 'assistant') {
-    return true
-  }
-
-  if (candidate.role !== 'user') return false
-
-  const existingOptimistic = isOptimisticUserMessage(existing)
-  const candidateOptimistic = isOptimisticUserMessage(candidate)
-  if (existingOptimistic === candidateOptimistic) return false
-
-  const existingTs = getMessageTimestampValue(existing)
-  const candidateTs = getMessageTimestampValue(candidate)
-  if (existingTs !== null && candidateTs !== null) {
-    if (Math.abs(existingTs - candidateTs) > 15_000) return false
-  }
-
-  return (
-    getMessageAttachmentSignature(existing) ===
-    getMessageAttachmentSignature(candidate)
-  )
-}
-
-function stripQueuedWrapperFromUserMessage(message: ChatMessage): ChatMessage {
-  if (message.role !== 'user') return message
-
-  const text = textFromMessage(message)
-  const cleanedText = stripQueuedWrapper(text)
-  if (cleanedText === text) return message
-
-  return {
-    ...message,
-    content: [{ type: 'text', text: cleanedText }],
-    text: cleanedText,
-    body: cleanedText,
-    message: cleanedText,
-  }
 }
 
 export function ChatScreen({
@@ -759,7 +590,7 @@ export function ChatScreen({
     // Snapshot any unconfirmed optimistic user messages BEFORE refetch.
     // The refetch replaces the query cache with server data — if the server
     // hasn't processed the user's POST yet, the optimistic message vanishes.
-    const currentMessages = (historyQuery.data as any)?.messages as Array<ChatMessage> | undefined
+    const currentMessages = (historyQuery.data as { messages?: Array<ChatMessage> } | undefined)?.messages
     const pendingOptimistic = (currentMessages ?? []).filter((msg) => {
       const raw = msg as Record<string, unknown>
       return (
@@ -898,7 +729,7 @@ export function ChatScreen({
     messages: historyMessages.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: textFromMessage(m),
-    })) as any,
+    })),
     availableModels: availableModelIds,
   })
 
@@ -1012,166 +843,32 @@ export function ChatScreen({
   )
 
   // Use realtime-merged messages for display (SSE + history)
-  // Re-apply display filter to realtime messages
-  const finalDisplayMessages = useMemo(() => {
-    const filtered = realtimeMessages.filter((msg) => {
-      if (msg.role === 'user') {
-        const text = stripQueuedWrapper(textFromMessage(msg))
-        if (text.startsWith('A subagent task')) return false
-        return true
-      }
-      if (msg.role === 'assistant') {
-        if (msg.__streamingStatus === 'streaming') return true
-        if ((msg as any).__optimisticId && !msg.content?.length) return true
-        if (textFromMessage(msg).trim().length > 0) return true
-        const content = Array.isArray(msg.content) ? msg.content : []
-        const hasToolCalls = content.some((part) => part.type === 'toolCall')
-        const hasStreamToolCalls =
-          Array.isArray((msg as any).__streamToolCalls) &&
-          (msg as any).__streamToolCalls.length > 0
-        return hasToolCalls || hasStreamToolCalls
-      }
-      return false
-    })
-
-    const sortedForDedup = [...filtered].sort((a, b) => {
-      const aRaw = a as Record<string, unknown>
-      const bRaw = b as Record<string, unknown>
-      const aIsOptimistic =
-        normalizeMessageValue(aRaw.__optimisticId).startsWith('opt-') &&
-        !normalizeMessageValue(aRaw.id)
-      const bIsOptimistic =
-        normalizeMessageValue(bRaw.__optimisticId).startsWith('opt-') &&
-        !normalizeMessageValue(bRaw.id)
-      if (aIsOptimistic && !bIsOptimistic) return 1
-      if (!aIsOptimistic && bIsOptimistic) return -1
-      return 0
-    })
-
-    const seen = new Set<string>()
-    const seenByText = new Map<string, ChatMessage>()
-    const dedupedSet = new Set<ChatMessage>()
-    for (const msg of sortedForDedup) {
-      const raw = msg as Record<string, unknown>
-      const rawOptimisticId = normalizeMessageValue(raw.__optimisticId)
-      const bareOptimisticUuid = rawOptimisticId.startsWith('opt-')
-        ? rawOptimisticId.slice(4)
-        : ''
-      const idCandidates = [
-        normalizeMessageValue(raw.id),
-        normalizeMessageValue(raw.messageId),
-        normalizeMessageValue(raw.clientId),
-        normalizeMessageValue(raw.client_id),
-        normalizeMessageValue(raw.nonce),
-        normalizeMessageValue(raw.idempotencyKey),
-        bareOptimisticUuid,
-        rawOptimisticId,
-      ].filter(Boolean)
-
-      const primaryKey =
-        idCandidates.length > 0
-          ? `${msg.role}:id:${idCandidates[0]}`
-          : `${msg.role}:fallback:${messageFallbackSignature(msg)}`
-
-      if (seen.has(primaryKey)) continue
-
-      const text = stripQueuedWrapper(textFromMessage(msg)).trim()
-      if (text.length > 0) {
-        const normalizedText = text.replace(/\s+/g, ' ')
-        const textKey = `${msg.role}:text:${normalizedText}`
-        const existingTextMatch = seenByText.get(textKey)
-        if (
-          existingTextMatch &&
-          shouldCollapseTextDuplicate(existingTextMatch, msg)
-        ) {
-          continue
-        }
-        if (!existingTextMatch) {
-          seenByText.set(textKey, msg)
-        }
-      }
-
-      seen.add(primaryKey)
-      for (const candidate of idCandidates.slice(1)) {
-        seen.add(`${msg.role}:id:${candidate}`)
-      }
-      dedupedSet.add(msg)
-    }
-
-    const deduped = filtered
-      .filter((msg) => dedupedSet.has(msg))
-      .map((msg) => stripQueuedWrapperFromUserMessage(msg))
-
-    if (!activeIsRealtimeStreaming) {
-      return deduped
-    }
-
-    const nextMessages = [...deduped]
-    const streamToolCalls = activeToolCalls.map((toolCall) => ({
-      ...toolCall,
-      phase: toolCall.phase,
-    }))
-
-    const streamingMsg = {
-      role: 'assistant',
-      content: [],
-      __optimisticId: 'streaming-current',
-      __streamingStatus: 'streaming',
-      __streamingText: activeRealtimeStreamingText,
-      __streamingThinking: realtimeStreamingThinking,
-      __streamToolCalls: streamToolCalls,
-    } as ChatMessage
-
-    const existingStreamIdx = nextMessages.findIndex(
-      (message) => message.__streamingStatus === 'streaming',
-    )
-
-    if (existingStreamIdx >= 0) {
-      nextMessages[existingStreamIdx] = {
-        ...nextMessages[existingStreamIdx],
-        ...streamingMsg,
-      }
-      return nextMessages
-    }
-
-    const lastUserIdx = nextMessages.reduce(
-      (lastIdx, msg, idx) => (msg.role === 'user' ? idx : lastIdx),
-      -1,
-    )
-    if (lastUserIdx >= 0 && lastUserIdx === nextMessages.length - 1) {
-      nextMessages.push(streamingMsg)
-    } else if (lastUserIdx >= 0) {
-      nextMessages.splice(lastUserIdx + 1, 0, streamingMsg)
-    } else {
-      nextMessages.push(streamingMsg)
-    }
-    return nextMessages
-  }, [
-    activeToolCalls,
+  const { displayMessages: finalDisplayMessages } = useChatDisplayMessages({
+    realtimeMessages,
     activeIsRealtimeStreaming,
     activeRealtimeStreamingText,
-    realtimeMessages,
     realtimeStreamingThinking,
-  ])
+    activeToolCalls,
+  })
 
   const derivedStreamingInfo = useMemo(() => {
     if (activeIsRealtimeStreaming) {
       const last = finalDisplayMessages[finalDisplayMessages.length - 1]
       const id = isPortableMode
         ? localStreamingMessageId
-        : last?.role === 'assistant'
-          ? ((last as any).__optimisticId || (last as any).id || null)
+        : last.role === 'assistant'
+          ? ((last.__optimisticId || last.id || null) as string | null)
           : null
       return { isStreaming: true, streamingMessageId: id }
     }
     if (waitingForResponse && finalDisplayMessages.length > 0) {
       const last = finalDisplayMessages[finalDisplayMessages.length - 1]
-      if (last && last.role === 'assistant') {
-        const isStreamingPlaceholder = (last as any).__streamingStatus === 'streaming'
+      if (last.role === 'assistant') {
+        const isStreamingPlaceholder = last.__streamingStatus === 'streaming'
         if (!isStreamingPlaceholder) {
           return { isStreaming: false, streamingMessageId: null as string | null }
         }
-        const id = (last as any).__optimisticId || (last as any).id || null
+        const id = (last.__optimisticId || last.id || null) as string | null
         return { isStreaming: true, streamingMessageId: id }
       }
     }
@@ -1197,7 +894,7 @@ export function ChatScreen({
     if (waitingForResponse) {
       messageCountAtSendRef.current = finalDisplayMessages.length
       const lastMsg = finalDisplayMessages[finalDisplayMessages.length - 1]
-      if (lastMsg?.role === 'assistant') {
+      if (lastMsg.role === 'assistant') {
         const raw = lastMsg as Record<string, unknown>
         lastAssistantIdAtSendRef.current =
           String(raw.__optimisticId ?? raw.id ?? raw.messageId ?? raw.__realtimeSequence ?? '')
@@ -1216,8 +913,8 @@ export function ChatScreen({
       return
     }
     const last = finalDisplayMessages[finalDisplayMessages.length - 1]
-    if (!last || last.role !== 'assistant') return
-    if ((last as any).__streamingStatus === 'streaming') return
+    if (last.role !== 'assistant') return
+    if (last.__streamingStatus === 'streaming') return
     const countGrew = finalDisplayMessages.length > messageCountAtSendRef.current
     const raw = last as Record<string, unknown>
     const currentId = String(raw.__optimisticId ?? raw.id ?? raw.messageId ?? raw.__realtimeSequence ?? '')
@@ -1294,22 +991,8 @@ export function ChatScreen({
     staleTime: 30_000,
     refetchInterval: 60_000, // Re-check every 60s to clear stale errors
   })
-  // Don't show errors for new chats or when SSE is connected
-  const statusError =
-    !isNewChat && connectionState !== 'connected'
-      ? statusQuery.error instanceof Error
-        ? {
-            message: statusQuery.error.message,
-            status: (statusQuery.error as Error & { status?: number })
-              .status,
-          }
-        : statusQuery.data && !statusQuery.data.ok
-          ? {
-              message: statusQuery.data.error || 'Hermes unavailable',
-              status: statusQuery.data.status,
-            }
-          : null
-      : null
+  // connectionState is always 'connected' — statusError is always null
+  const statusError = null as { message: string; status?: number } | null
   const serverError = statusError?.message ?? sessionsError ?? historyError
   const serverErrorStatus = statusError?.status
   const showErrorNotice = Boolean(serverError) && !isNewChat
@@ -1533,162 +1216,23 @@ export function ChatScreen({
     setWaitingForResponse(false)
   }, [activeFriendlyId, isNewChat, streamStop])
 
-  /**
-   * Simplified sendMessage - fire and forget.
-   * Response arrives via SSE stream, not via this function.
-   */
-  const sendMessage = useCallback(
-    function sendMessage(
-      sessionKey: string,
-      friendlyId: string,
-      body: string,
-      attachments: Array<ChatAttachment> = [],
-      fastMode = false,
-      skipOptimistic = false,
-      existingClientId = '',
-    ) {
-      // Read from ref so we always get the latest value without capturing it in deps
-      const currentThinkingLevel = thinkingLevelRef.current
-      setLocalActivity('reading')
-      const normalizedAttachments = attachments.map((attachment) => ({
-        ...attachment,
-        id: attachment.id ?? crypto.randomUUID(),
-      }))
-
-    // Inject text/file attachment content directly into the message body.
-    // Servers reliably forward text in the message body; file attachments
-    // may be silently dropped for non-image types.
-      const textBlocks = normalizedAttachments
-        .filter((a) => {
-          const mime =
-            normalizeMimeType(a.contentType ?? '') ||
-            readDataUrlMimeType(a.dataUrl ?? '')
-          return !isImageMimeType(mime) && (a.dataUrl ?? '').length > 0
-        })
-        .map((a) => {
-          const raw = a.dataUrl ?? ''
-          const content = raw.startsWith('data:')
-            ? atob(raw.split(',')[1] ?? '')
-            : raw
-          return `\n\n<attachment name="${a.name ?? 'file'}">\n${content}\n</attachment>`
-        })
-      const enrichedBody = body + textBlocks.join('')
-
-      let optimisticClientId = existingClientId
-      setResearchResetKey((current) => current + 1)
-      if (!skipOptimistic) {
-        const { clientId, optimisticMessage } = createOptimisticMessage(
-          body,
-          normalizedAttachments,
-        )
-        optimisticClientId = clientId
-        appendHistoryMessage(
-          queryClient,
-          friendlyId,
-          sessionKey,
-          optimisticMessage,
-        )
-        updateSessionLastMessage(
-          queryClient,
-          sessionKey,
-          friendlyId,
-          optimisticMessage,
-        )
-      }
-
-      setPendingGeneration(true)
-      setSending(true)
-      setError(null)
-      clearCompletedStreaming()
-      setWaitingForResponse(true)
-      activeSendRef.current = {
-        sessionKey,
-        friendlyId,
-        clientId: optimisticClientId,
-      }
-
-      // Failsafe: clear waitingForResponse after 120s no matter what
-      // Prevents infinite spinner if SSE/idle detection both fail
-      if (failsafeTimerRef.current) {
-        window.clearTimeout(failsafeTimerRef.current)
-      }
-      failsafeTimerRef.current = window.setTimeout(() => {
-        streamFinish()
-      }, 120_000)
-
-      // Send a compatibility shape for attachment parsing.
-      // Different server/channel versions read different keys.
-      const payloadAttachments = normalizedAttachments.map((attachment) => {
-        const mimeType =
-          normalizeMimeType(attachment.contentType) ||
-          readDataUrlMimeType(attachment.dataUrl)
-        const isImage = isImageMimeType(mimeType)
-        // For text/file attachments, dataUrl holds raw text (not a base64 data URL).
-        // We must base64-encode it so the server can build a valid data: URI.
-        const rawDataUrl = attachment.dataUrl ?? ''
-        let encodedContent: string
-        let finalDataUrl: string
-        if (!isImage && !rawDataUrl.startsWith('data:')) {
-          encodedContent = btoa(unescape(encodeURIComponent(rawDataUrl)))
-          finalDataUrl = mimeType
-            ? `data:${mimeType};base64,${encodedContent}`
-            : `data:text/plain;base64,${encodedContent}`
-        } else {
-          encodedContent = stripDataUrlPrefix(rawDataUrl)
-          finalDataUrl = rawDataUrl
-        }
-        return {
-          id: attachment.id,
-          name: attachment.name,
-          fileName: attachment.name,
-          contentType: mimeType || undefined,
-          mimeType: mimeType || undefined,
-          mediaType: mimeType || undefined,
-          type: isImage ? 'image' : 'file',
-          content: encodedContent,
-          data: encodedContent,
-          base64: encodedContent,
-          dataUrl: finalDataUrl,
-          size: attachment.size,
-        }
-      })
-      const history = buildPortableHistory(finalDisplayMessages)
-
-      try {
-        streamStart()
-      } catch (e) {
-        if (import.meta.env.DEV) {
-          console.warn('[chat] streamStart error (non-fatal):', e)
-        }
-      }
-
-      void startStreaming({
-        sessionKey,
-        friendlyId,
-        message: enrichedBody,
-        history,
-        attachments:
-          payloadAttachments.length > 0 ? payloadAttachments : undefined,
-        thinking: currentThinkingLevel === 'off' ? undefined : currentThinkingLevel,
-        fastMode,
-        idempotencyKey: optimisticClientId || crypto.randomUUID(),
-      }).catch((err: unknown) => {
-        const messageText = err instanceof Error ? err.message : String(err)
-        if (import.meta.env.DEV) {
-          console.warn('[chat] send-stream failed', messageText)
-        }
-      })
-    },
-    [
-      finalDisplayMessages,
-      clearCompletedStreaming,
-      queryClient,
-      setLocalActivity,
-      startStreaming,
-      streamFinish,
-      streamStart,
-    ],
-  )
+  const { sendMessage } = useChatSendMessage({
+    queryClient,
+    thinkingLevelRef,
+    failsafeTimerRef,
+    activeSendRef,
+    finalDisplayMessages,
+    buildPortableHistory,
+    setSending,
+    setError,
+    setLocalActivity,
+    setResearchResetKey,
+    setWaitingForResponse,
+    clearCompletedStreaming,
+    streamStart,
+    streamFinish,
+    startStreaming,
+  })
 
   useLayoutEffect(() => {
     if (isNewChat) return
@@ -1702,11 +1246,9 @@ export function ChatScreen({
       pending.friendlyId,
       pending.sessionKey,
     )
-    const cached = queryClient.getQueryData(historyKey)
-    const cachedMessages = Array.isArray((cached as any)?.messages)
-      ? (cached as any).messages
-      : []
-    const alreadyHasOptimistic = cachedMessages.some((message: any) => {
+    const cached = queryClient.getQueryData(historyKey) as { messages?: Array<ChatMessage> } | undefined
+    const cachedMessages = Array.isArray(cached?.messages) ? cached.messages : []
+    const alreadyHasOptimistic = cachedMessages.some((message: ChatMessage) => {
       if (pending.optimisticMessage.clientId) {
         if (message.clientId === pending.optimisticMessage.clientId) return true
         if (message.__optimisticId === pending.optimisticMessage.clientId)
@@ -1823,13 +1365,7 @@ export function ChatScreen({
   )
 
   useEffect(() => {
-    if (false) { // Server connection checks removed — Hermes uses direct API
-      hasSeenDisconnectRef.current = true
-      retriedQueuedMessageKeysRef.current.clear()
-      return
-    }
-
-    if (connectionState === 'connected' && hasSeenDisconnectRef.current) {
+    if (hasSeenDisconnectRef.current) {
       hasSeenDisconnectRef.current = false
       flushRetryableMessages()
     }
@@ -1914,11 +1450,11 @@ export function ChatScreen({
       queryClient.setQueryData(
         chatQueryKeys.sessions,
         function upsert(existing: unknown) {
-          const sessions = Array.isArray(existing)
+          const cachedSessions = Array.isArray(existing)
             ? (existing as Array<SessionMeta>)
             : []
           const now = Date.now()
-          const existingIndex = sessions.findIndex((session) => {
+          const existingIndex = cachedSessions.findIndex((session) => {
             return (
               session.friendlyId === friendlyId || session.key === friendlyId
             )
@@ -1933,11 +1469,11 @@ export function ChatScreen({
                 lastMessage,
                 titleStatus: 'idle',
               },
-              ...sessions,
+              ...cachedSessions,
             ]
           }
 
-          return sessions.map((session, index) => {
+          return cachedSessions.map((session, index) => {
             if (index !== existingIndex) return session
             return {
               ...session,
@@ -2154,7 +1690,7 @@ export function ChatScreen({
   useEffect(() => {
     function handleRunCommand(event: Event) {
       const detail = (event as CustomEvent<ChatRunCommandDetail>).detail
-      if (!detail?.command) return
+      if (!detail.command) return
       runPaletteSlashCommand(detail.command)
     }
 
@@ -2233,12 +1769,7 @@ export function ChatScreen({
     )
   }, [serverError, serverErrorStatus, handleRefetch, showErrorNotice])
 
-  const mobileHeaderStatus: 'connected' | 'connecting' | 'disconnected' =
-    connectionState === 'connected'
-      ? 'connected'
-      : statusQuery.data?.ok === false || statusQuery.isError
-        ? 'disconnected'
-        : 'connecting'
+  const mobileHeaderStatus: 'connected' | 'connecting' | 'disconnected' = 'connected'
 
   const activeHeaderToolName =
     liveToolActivity[0]?.name || activeToolCalls[0]?.name || undefined
@@ -2324,7 +1855,7 @@ export function ChatScreen({
               renamingTitle={renamingSessionTitle}
               wrapperRef={headerRef}
               onOpenSessions={() => setSessionsOpen(true)}
-              sessions={sessions ?? []}
+              sessions={sessions}
               activeFriendlyId={activeFriendlyId}
               onSelectSession={(key) => void navigate({ to: '/chat/$sessionKey', params: { sessionKey: key } })}
               showFileExplorerButton={!isMobile && !isFocusMode}

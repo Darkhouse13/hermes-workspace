@@ -9,6 +9,9 @@ import { fileURLToPath } from 'node:url'
 import { homedir } from 'node:os'
 import EventEmitter from 'node:events'
 import type {ChildProcess} from 'node:child_process';
+import { createLogger } from './logger'
+
+const log = createLogger('terminal-sessions')
 
 export type TerminalSessionEvent = {
   event: string
@@ -43,7 +46,7 @@ export function createTerminalSession(params: {
   const emitter = new EventEmitter()
   const sessionId = randomUUID()
 
-  const home = process.env.HOME ?? homedir() ?? '/tmp'
+  const home = process.env.HOME ?? homedir()
   const defaultShell =
     process.platform === 'win32'
       ? 'powershell.exe'
@@ -111,7 +114,7 @@ export function createTerminalSession(params: {
   proc.stderr?.on('data', (data: Buffer) => {
     const msg = data.toString()
     if (msg.trim()) {
-      if (import.meta.env.DEV) console.error('[pty-helper stderr]', msg)
+      log.error('pty-helper stderr', { message: msg })
     }
   })
 

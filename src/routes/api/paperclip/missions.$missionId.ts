@@ -6,6 +6,7 @@ import { requireJsonContentType } from '@/server/rate-limit'
 import { ensureApprovalForMission } from '@/server/paperclip-approvals'
 import { ensureHandoffForMissionTransition } from '@/server/paperclip-handoffs'
 import { getMission, transitionMissionStatus, updateMission } from '@/server/paperclip-missions'
+import type { MissionStatus, PaperclipMission } from '@/types/paperclip'
 
 export const Route = createFileRoute('/api/paperclip/missions/$missionId')({
   server: {
@@ -22,10 +23,10 @@ export const Route = createFileRoute('/api/paperclip/missions/$missionId')({
         if (csrf) return csrf
         const body = (await request.json().catch(() => ({}))) as Record<string, unknown>
         let mission = body.status
-          ? await transitionMissionStatus(params.missionId, String(body.status) as any)
-          : await updateMission(params.missionId, body as any)
+          ? await transitionMissionStatus(params.missionId, String(body.status) as MissionStatus)
+          : await updateMission(params.missionId, body as Partial<PaperclipMission>)
         if (mission.status === 'blocked' || mission.status === 'awaiting_approval' || mission.status === 'completed') {
-          await ensureHandoffForMissionTransition(mission.id, mission.status as any)
+          await ensureHandoffForMissionTransition(mission.id, mission.status as 'blocked' | 'awaiting_approval' | 'completed')
         }
         if (mission.status === 'awaiting_approval' || mission.status === 'completed') {
           await ensureApprovalForMission(mission.id, mission.status)

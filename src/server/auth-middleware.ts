@@ -1,10 +1,19 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto'
 
 /**
- * In-memory session store.
+ * In-memory session store with expiration.
  * For production, consider Redis or a database.
  */
-const validTokens = new Set<string>()
+interface TokenMetadata {
+  createdAt: number
+  expiresAt: number
+}
+
+const TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000 // 30 days
+const MAX_TOKENS = 10_000
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000 // 5 minutes
+
+const validTokens = new Map<string, TokenMetadata>()
 
 /**
  * Generate a cryptographically secure session token.
@@ -14,17 +23,42 @@ export function generateSessionToken(): string {
 }
 
 /**
- * Store a session token as valid.
+ * Store a session token as valid with expiration metadata.
+ * Evicts the oldest token if the store is at capacity.
  */
 export function storeSessionToken(token: string): void {
-  validTokens.add(token)
+  const now = Date.now()
+
+  // Evict oldest token if at capacity
+  if (validTokens.size >= MAX_TOKENS && !validTokens.has(token)) {
+    let oldestKey: string | null = null
+    let oldestTime = Infinity
+    for (const [key, meta] of validTokens) {
+      if (meta.createdAt < oldestTime) {
+        oldestTime = meta.createdAt
+        oldestKey = key
+      }
+    }
+    if (oldestKey) validTokens.delete(oldestKey)
+  }
+
+  validTokens.set(token, {
+    createdAt: now,
+    expiresAt: now + TOKEN_TTL_MS,
+  })
 }
 
 /**
- * Check if a session token is valid.
+ * Check if a session token is valid and not expired.
  */
 export function isValidSessionToken(token: string): boolean {
-  return validTokens.has(token)
+  const meta = validTokens.get(token)
+  if (!meta) return false
+  if (Date.now() > meta.expiresAt) {
+    validTokens.delete(token)
+    return false
+  }
+  return true
 }
 
 /**
@@ -32,6 +66,39 @@ export function isValidSessionToken(token: string): boolean {
  */
 export function revokeSessionToken(token: string): void {
   validTokens.delete(token)
+}
+
+/**
+ * Evict all expired tokens from the store.
+ */
+export function evictExpiredTokens(): void {
+  const now = Date.now()
+  for (const [key, meta] of validTokens) {
+    if (now > meta.expiresAt) {
+      validTokens.delete(key)
+    }
+  }
+}
+
+// Periodic cleanup of expired tokens (every 5 minutes)
+const _cleanupInterval = setInterval(evictExpiredTokens, CLEANUP_INTERVAL_MS)
+// Allow Node to exit without waiting for the interval
+if (typeof _cleanupInterval.unref === 'function') {
+  _cleanupInterval.unref()
+}
+
+/**
+ * Clear all tokens. Exported for testing only.
+ */
+export function _clearAllTokens(): void {
+  validTokens.clear()
+}
+
+/**
+ * Get the current token count. Exported for testing only.
+ */
+export function _getTokenCount(): number {
+  return validTokens.size
 }
 
 /**
@@ -64,6 +131,9 @@ export function verifyPassword(password: string): boolean {
   try {
     return timingSafeEqual(passwordBuf, configuredBuf)
   } catch {
+    // Intentional: timingSafeEqual can throw if buffers differ in byte length
+    // after encoding. Returning false is the safe default — logging here would
+    // leak timing information about password validation failures.
     return false
   }
 }

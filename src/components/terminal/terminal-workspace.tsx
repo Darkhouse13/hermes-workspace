@@ -2,12 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { HugeiconsIcon } from '@hugeicons/react'
 import {
   Add01Icon,
-  ArrowLeft01Icon,
   ArrowRight01Icon,
-  ArrowUp02Icon,
   Cancel01Icon,
   ComputerTerminal01Icon,
-  Copy01Icon,
   SidebarLeft01Icon,
 } from '@hugeicons/core-free-icons'
 import type { FitAddon } from 'xterm-addon-fit'
@@ -116,7 +113,6 @@ export function TerminalWorkspace({
   onMinimizePanel,
   onMaximizePanel,
   onClosePanel,
-  onBack,
 }: TerminalWorkspaceProps) {
   const tabs = useTerminalPanelStore((state) => state.tabs)
   const activeTabId = useTerminalPanelStore((state) => state.activeTabId)
@@ -457,7 +453,6 @@ export function TerminalWorkspace({
       }
 
       // Flush any remaining buffered writes
-      if (flushTimer) clearTimeout(flushTimer)
       flushWrites()
 
       const latestTab = useTerminalPanelStore

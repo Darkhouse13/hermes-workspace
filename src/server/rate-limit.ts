@@ -3,6 +3,8 @@
  * Uses a sliding window approach per key.
  */
 
+const MAX_TRACKED_KEYS = 100_000
+
 const store = new Map<string, { timestamps: Array<number> }>()
 
 // Cleanup old entries every 5 minutes
@@ -26,6 +28,10 @@ export function rateLimit(
   const now = Date.now()
   let entry = store.get(key)
   if (!entry) {
+    // Fail-closed: reject new keys when at capacity
+    if (store.size >= MAX_TRACKED_KEYS) {
+      return false
+    }
     entry = { timestamps: [] }
     store.set(key, entry)
   }
@@ -80,6 +86,23 @@ export function requireJsonContentType(request: Request): Response | null {
     JSON.stringify({ error: 'Content-Type must be application/json' }),
     { status: 415, headers: { 'Content-Type': 'application/json' } },
   )
+}
+
+/**
+ * Sanitize error for response — hide details in production.
+ */
+/**
+ * Clear all rate limit entries. Exported for testing only.
+ */
+export function _clearRateLimitStore(): void {
+  store.clear()
+}
+
+/**
+ * Get current tracked key count. Exported for testing only.
+ */
+export function _getTrackedKeyCount(): number {
+  return store.size
 }
 
 /**
